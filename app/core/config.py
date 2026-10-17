@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     test_database_url: SecretStr | None = None
     redis_url: SecretStr | None = None
     milvus_uri: str | None = None
+    test_milvus_uri: str | None = None
+    milvus_collection: str = "enterprise_rag_chunks"
+    embedding_dimension: int = 128
 
     @model_validator(mode="after")
     def validate_real_mode(self) -> Self:

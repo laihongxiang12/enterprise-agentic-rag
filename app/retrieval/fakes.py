@@ -70,7 +70,7 @@ class FakeVectorStore:
                 chunk.chunk_id,
             )
             self._records[key] = _StoredChunk(
-                chunk=chunk.model_copy(deep=True),
+                chunk=chunk.model_copy(update={"index_version": version}, deep=True),
                 embedding=tuple(float(value) for value in embedding),
                 index_version=version,
             )
@@ -133,13 +133,19 @@ class FakeVectorStore:
     async def delete_version(
         self,
         tenant_id: str,
+        workspace_id: str,
         document_id: str,
-        version: int,
+        document_version: int,
+        index_version: str,
     ) -> None:
         keys = [
             key
             for key in self._records
-            if key[0] == tenant_id and key[2] == document_id and key[3] == version
+            if key[0] == tenant_id
+            and key[1] == workspace_id
+            and key[2] == document_id
+            and key[3] == document_version
+            and key[4] == index_version
         ]
         for key in keys:
             del self._records[key]
@@ -157,6 +163,14 @@ class FakeVectorStore:
             and record.chunk.workspace_id == auth_filter.workspace_id
             and record.chunk.document_id in auth_filter.allowed_document_ids
             and record.index_version in auth_filter.allowed_index_versions
+            and (
+                not auth_filter.allowed_document_versions
+                or (
+                    record.chunk.document_id,
+                    record.chunk.document_version,
+                    record.index_version,
+                ) in auth_filter.allowed_document_versions
+            )
         ]
 
     @staticmethod

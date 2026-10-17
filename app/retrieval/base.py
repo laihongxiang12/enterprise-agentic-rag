@@ -40,8 +40,10 @@ class VectorStore(Protocol):
     async def delete_version(
         self,
         tenant_id: str,
+        workspace_id: str,
         document_id: str,
-        version: int,
+        document_version: int,
+        index_version: str,
     ) -> None: ...
 
 

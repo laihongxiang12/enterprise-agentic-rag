@@ -2,7 +2,7 @@
 
 这是 `all-in-rag` 工作树中的增量产品子项目。旧 `code/`、`data/`、`docs/`、`models/` 和原虚拟环境继续作为 baseline；新服务从本目录独立安装、测试和运行。
 
-当前实现包含 FastAPI 基础、严格契约、离线 Fake、文档 Loader、版本化 Ingestion，以及 PostgreSQL 元数据/ACL adapter。Milvus、Redis、Agent 图和真实 LLM 尚未完成，不能把健康检查或 Fake 测试解释为完整 RAG 已可用。
+当前实现包含 FastAPI 基础、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL，以及 Milvus Dense/版本化授权 Adapter。Milvus 原生 BM25/Hybrid、Redis、Agent 图和真实 LLM 尚未完成，不能把健康检查或 Fake 测试解释为完整 RAG 已可用。
 
 ## WSL 快速开始
 
@@ -60,6 +60,18 @@ uv run pytest tests/integration/test_postgres.py -m integration -q
 容器只绑定 WSL 本机的 `127.0.0.1:5432`，数据保存在命名卷中。Python 使用 `psycopg[binary]` 自带的 `libpq` 运行时，不要求在 WSL 中通过 `sudo apt` 安装系统 `libpq`。停止服务使用 `docker compose stop postgres`；不要随意使用 `down -v`，它会删除本地数据库卷。
 
 PostgreSQL migration、权限边界和集成测试说明见 [`docs/security.md`](docs/security.md)。没有设置 `TEST_DATABASE_URL` 时真实 PostgreSQL 测试会明确跳过，不能把跳过解释为真实数据库通过。
+
+## Milvus
+
+启动官方版本锁定的 Milvus 2.5.27，并初始化默认 collection：
+
+```bash
+docker compose up -d --wait milvus
+uv run python -m scripts.milvus_init
+uv run pytest tests/integration/test_milvus.py -m integration -q
+```
+
+Milvus 仅绑定 `127.0.0.1:19530`；etcd、MinIO 和 9091 端口不暴露到宿主机。版本选择、schema 和服务端 ACL 过滤设计见 [`docs/adr/001-milvus.md`](docs/adr/001-milvus.md)。当前阶段只实现 Dense 正式 Adapter；原生 BM25/Hybrid 属于阶段 08。
 
 `DEV_AUTH_ENABLED` 只允许用于 local、loopback、非 real 模式，并要求至少 32 字符的开发密钥。它是签名的演示身份边界，不是企业 SSO。
 

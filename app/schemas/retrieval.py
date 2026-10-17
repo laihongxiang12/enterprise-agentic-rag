@@ -1,6 +1,6 @@
 """Authorized retrieval contracts."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field
 
@@ -28,6 +28,7 @@ class AuthFilter(ContractModel):
     group_ids: frozenset[str] = Field(default_factory=frozenset)
     allowed_document_ids: frozenset[str] = Field(default_factory=frozenset)
     allowed_index_versions: frozenset[str] = Field(default_factory=frozenset)
+    allowed_document_versions: frozenset[tuple[str, int, str]] = Field(default_factory=frozenset)
 
 
 class AuthorizedDocument(ContractModel):
@@ -58,6 +59,10 @@ class AuthorizationScope(ContractModel):
             group_ids=self.group_ids,
             allowed_document_ids=frozenset(item.document_id for item in self.documents),
             allowed_index_versions=frozenset(item.index_version for item in self.documents),
+            allowed_document_versions=frozenset(
+                (item.document_id, item.document_version, item.index_version)
+                for item in self.documents
+            ),
         )
 
 
@@ -73,6 +78,9 @@ class RetrievedChunk(ContractModel):
     content: NonEmptyString
     title: NonEmptyString
     source_uri: NonEmptyString
+    visibility: Literal["restricted", "tenant"] = "restricted"
+    acl_groups: list[str] = Field(default_factory=list)
+    index_version: NonEmptyString | None = None
     page: int | None = None
     heading_path: list[str] = Field(default_factory=list)
     score: float | None = None
