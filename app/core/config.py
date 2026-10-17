@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
 
     database_url: SecretStr | None = None
+    test_database_url: SecretStr | None = None
     redis_url: SecretStr | None = None
     milvus_uri: str | None = None
 

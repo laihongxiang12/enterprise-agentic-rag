@@ -53,12 +53,18 @@ the allowlist, versions, and tenant scope come from trusted PostgreSQL state.
 
 ## Real PostgreSQL integration
 
-Set an isolated test database and run:
+The repository Compose service binds PostgreSQL only to loopback. Copy `.env.example`
+to ignored `.env`, replace its password, and run:
 
 ```bash
-export TEST_DATABASE_URL='postgresql://user:password@127.0.0.1:5432/enterprise_rag_test'
+docker compose up -d postgres
+docker compose ps postgres
 uv run pytest tests/integration/test_postgres.py -m integration -q
 ```
+
+`psycopg[binary]` supplies its own compatible `libpq` runtime inside the Python
+environment. Without `TEST_DATABASE_URL`, the test is skipped and does not claim
+PostgreSQL passed.
 
 The test applies packaged migrations, creates uniquely named tenants, verifies cross-tenant and
 group isolation plus ACL version changes, and removes only those test tenants afterward.

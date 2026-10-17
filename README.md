@@ -49,7 +49,17 @@ Fake Mode 证明契约、解析、分块、版本切换和授权规则能够离�
 
 ## PostgreSQL 与开发认证
 
-PostgreSQL migration、权限边界和集成测试说明见 [`docs/security.md`](docs/security.md)。没有设置 `TEST_DATABASE_URL` 时真实 PostgreSQL 测试会明确跳过。
+复制 `.env.example` 为 `.env` 并替换其中的本地数据库密码，然后启动 PostgreSQL、等待健康检查并运行真实集成测试：
+
+```bash
+docker compose up -d postgres
+docker compose ps postgres
+uv run pytest tests/integration/test_postgres.py -m integration -q
+```
+
+容器只绑定 WSL 本机的 `127.0.0.1:5432`，数据保存在命名卷中。Python 使用 `psycopg[binary]` 自带的 `libpq` 运行时，不要求在 WSL 中通过 `sudo apt` 安装系统 `libpq`。停止服务使用 `docker compose stop postgres`；不要随意使用 `down -v`，它会删除本地数据库卷。
+
+PostgreSQL migration、权限边界和集成测试说明见 [`docs/security.md`](docs/security.md)。没有设置 `TEST_DATABASE_URL` 时真实 PostgreSQL 测试会明确跳过，不能把跳过解释为真实数据库通过。
 
 `DEV_AUTH_ENABLED` 只允许用于 local、loopback、非 real 模式，并要求至少 32 字符的开发密钥。它是签名的演示身份边界，不是企业 SSO。
 

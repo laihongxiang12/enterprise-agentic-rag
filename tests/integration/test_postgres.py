@@ -1,10 +1,10 @@
 """Real PostgreSQL tenant/ACL integration path; skipped without explicit DSN."""
 
-import os
 from uuid import uuid4
 
 import pytest
 
+from app.core.config import Settings
 from app.schemas.documents import DocumentMeta, Principal
 
 pytestmark = pytest.mark.integration
@@ -31,9 +31,10 @@ def ready_document(
 
 @pytest.mark.asyncio
 async def test_postgres_tenant_workspace_acl_and_version_update() -> None:
-    database_url = os.getenv("TEST_DATABASE_URL")
-    if database_url is None:
+    configured_url = Settings().test_database_url
+    if configured_url is None:
         pytest.skip("TEST_DATABASE_URL is not configured for real PostgreSQL integration")
+    database_url = configured_url.get_secret_value()
 
     pytest.importorskip("psycopg", exc_type=ImportError)
     from psycopg import AsyncConnection
