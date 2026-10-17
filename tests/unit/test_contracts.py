@@ -210,6 +210,7 @@ async def test_fake_vector_store_prefilters_tenant_and_allowlist() -> None:
         workspace_id="hr",
         group_ids=frozenset({"hr"}),
         allowed_document_ids=frozenset({"doc-a", "doc-b"}),
+        allowed_index_versions=frozenset({"index-v1"}),
     )
     results = await store.search_dense(query_vector, auth_filter, top_k=5)
 

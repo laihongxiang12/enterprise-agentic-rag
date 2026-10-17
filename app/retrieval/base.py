@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from app.schemas.agent import EvidenceGrade
-from app.schemas.documents import Principal
 from app.schemas.retrieval import AuthFilter, RetrievedChunk
 
 
@@ -51,8 +50,7 @@ class Retriever(Protocol):
     async def aretrieve(
         self,
         query: str,
-        principal: Principal,
-        workspace_id: str | None,
+        auth_filter: AuthFilter,
         top_k: int,
     ) -> list[RetrievedChunk]: ...
 

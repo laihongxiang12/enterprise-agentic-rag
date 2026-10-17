@@ -2,9 +2,11 @@
 
 import hashlib
 import math
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.retrieval.hybrid import tokenize_text
 from app.schemas.retrieval import AuthFilter, RetrievedChunk
 
 
@@ -24,7 +26,7 @@ class FakeEmbedding:
 
     def _embed(self, text: str) -> list[float]:
         vector = [0.0] * self.dimension
-        for token in text.casefold().split():
+        for token in tokenize_text(text):
             digest = hashlib.sha256(token.encode("utf-8")).digest()
             bucket = int.from_bytes(digest[:4], "big") % self.dimension
             sign = 1.0 if digest[4] % 2 == 0 else -1.0
@@ -44,7 +46,7 @@ class FakeVectorStore:
     """In-memory store that applies authorization before scoring candidates."""
 
     def __init__(self) -> None:
-        self._records: dict[tuple[str, str, str, int, str], _StoredChunk] = {}
+        self._records: dict[tuple[str, str, str, int, str, str], _StoredChunk] = {}
 
     async def upsert(
         self,
@@ -64,6 +66,7 @@ class FakeVectorStore:
                 chunk.workspace_id,
                 chunk.document_id,
                 chunk.document_version,
+                version,
                 chunk.chunk_id,
             )
             self._records[key] = _StoredChunk(
@@ -87,7 +90,8 @@ class FakeVectorStore:
             if len(query) != len(record.embedding):
                 raise ValueError("query and stored embedding dimensions differ")
             score = self._cosine_similarity(query, record.embedding)
-            scored.append((score, record.chunk))
+            if score > 0:
+                scored.append((score, record.chunk))
         return self._ranked_copies(scored, top_k)
 
     async def search_lexical(
@@ -97,16 +101,30 @@ class FakeVectorStore:
         top_k: int,
     ) -> list[RetrievedChunk]:
         self._validate_top_k(top_k)
-        query_terms = {char for char in query.casefold() if not char.isspace()}
+        query_terms = tokenize_text(query)
+        if not query_terms:
+            return []
+        records = self._authorized_records(auth_filter)
+        tokenized = [
+            tokenize_text(f"{record.chunk.title} {record.chunk.content}")
+            for record in records
+        ]
+        document_frequency = Counter(
+            token for document in tokenized for token in set(document)
+        )
+        average_length = (
+            sum(len(document) for document in tokenized) / len(tokenized)
+            if tokenized
+            else 0.0
+        )
         scored: list[tuple[float, RetrievedChunk]] = []
-        for record in self._authorized_records(auth_filter):
-            content_terms = {
-                char for char in record.chunk.content.casefold() if not char.isspace()
-            }
-            score = (
-                len(query_terms & content_terms) / len(query_terms)
-                if query_terms
-                else 0.0
+        for record, document_terms in zip(records, tokenized, strict=True):
+            score = self._bm25_score(
+                query_terms,
+                document_terms,
+                document_frequency,
+                len(tokenized),
+                average_length,
             )
             if score > 0:
                 scored.append((score, record.chunk))
@@ -127,7 +145,10 @@ class FakeVectorStore:
             del self._records[key]
 
     def _authorized_records(self, auth_filter: AuthFilter) -> list[_StoredChunk]:
-        if not auth_filter.allowed_document_ids:
+        if (
+            not auth_filter.allowed_document_ids
+            or not auth_filter.allowed_index_versions
+        ):
             return []
         return [
             record
@@ -135,7 +156,40 @@ class FakeVectorStore:
             if record.chunk.tenant_id == auth_filter.tenant_id
             and record.chunk.workspace_id == auth_filter.workspace_id
             and record.chunk.document_id in auth_filter.allowed_document_ids
+            and record.index_version in auth_filter.allowed_index_versions
         ]
+
+    @staticmethod
+    def _bm25_score(
+        query_terms: Sequence[str],
+        document_terms: Sequence[str],
+        document_frequency: Counter[str],
+        corpus_size: int,
+        average_length: float,
+        *,
+        k1: float = 1.5,
+        b: float = 0.75,
+    ) -> float:
+        if corpus_size == 0 or average_length == 0:
+            return 0.0
+        frequencies = Counter(document_terms)
+        length = len(document_terms)
+        score = 0.0
+        for term in set(query_terms):
+            frequency = frequencies[term]
+            if frequency == 0:
+                continue
+            documents_with_term = document_frequency[term]
+            inverse_document_frequency = math.log(
+                1.0
+                + (corpus_size - documents_with_term + 0.5)
+                / (documents_with_term + 0.5)
+            )
+            denominator = frequency + k1 * (
+                1.0 - b + b * length / average_length
+            )
+            score += inverse_document_frequency * frequency * (k1 + 1.0) / denominator
+        return score
 
     @staticmethod
     def _validate_top_k(top_k: int) -> None:
