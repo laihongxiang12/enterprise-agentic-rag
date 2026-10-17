@@ -2,7 +2,7 @@
 
 这是 `all-in-rag` 工作树中的增量产品子项目。旧 `code/`、`data/`、`docs/`、`models/` 和原虚拟环境继续作为 baseline；新服务从本目录独立安装、测试和运行。
 
-当前实现包含 FastAPI 基础、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL，以及 Milvus Dense/版本化授权 Adapter。Milvus 原生 BM25/Hybrid、Redis、Agent 图和真实 LLM 尚未完成，不能把健康检查或 Fake 测试解释为完整 RAG 已可用。
+当前实现包含 FastAPI 基础、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL，以及 Milvus Dense + 原生 BM25 + RRF 混合检索。Redis、Agent 图和真实 LLM 尚未完成，不能把健康检查或当前检索测试解释为完整 RAG 已可用。
 
 ## WSL 快速开始
 
@@ -71,7 +71,16 @@ uv run python -m scripts.milvus_init
 uv run pytest tests/integration/test_milvus.py -m integration -q
 ```
 
-Milvus 仅绑定 `127.0.0.1:19530`；etcd、MinIO 和 9091 端口不暴露到宿主机。版本选择、schema 和服务端 ACL 过滤设计见 [`docs/adr/001-milvus.md`](docs/adr/001-milvus.md)。当前阶段只实现 Dense 正式 Adapter；原生 BM25/Hybrid 属于阶段 08。
+Milvus 仅绑定 `127.0.0.1:19530`；etcd、MinIO 和 9091 端口不暴露到宿主机。版本选择、schema 和服务端 ACL 过滤设计见 [`docs/adr/001-milvus.md`](docs/adr/001-milvus.md)。原生 BM25、Jieba 中文分词、两路相同授权过滤和应用层 RRF 设计见 [`docs/adr/002-milvus-hybrid.md`](docs/adr/002-milvus-hybrid.md)。
+
+阶段 08 的默认 collection 是 `enterprise_rag_hybrid_chunks`。Stage 07 的 `enterprise_rag_chunks` 不会被自动删除；Milvus 无法原地补加 BM25 function，因此真实数据需要重新 ingestion 后再切换。混合检索默认 dense top 30、lexical top 30、RRF `k=60`、融合 top 20，可通过 `RETRIEVAL_*` 环境变量配置。
+
+分别运行离线单测与真实混合集成：
+
+```bash
+uv run pytest tests/unit -q
+uv run pytest tests/integration/test_milvus_hybrid.py -m integration -q
+```
 
 `DEV_AUTH_ENABLED` 只允许用于 local、loopback、非 real 模式，并要求至少 32 字符的开发密钥。它是签名的演示身份边界，不是企业 SSO。
 

@@ -1,10 +1,14 @@
-"""Offline Dense/BM25/RRF baseline and authorization-prefilter tests."""
+"""Offline Dense/BM25/RRF baseline and production hybrid orchestration tests."""
+
+import json
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from app.retrieval.base import Retriever
 from app.retrieval.fakes import FakeEmbedding, FakeVectorStore
 from app.retrieval.hybrid import (
+    HybridRetriever,
     OfflineHybridRetriever,
     reciprocal_rank_fusion,
     tokenize_text,
@@ -40,11 +44,17 @@ def auth_filter(
     tenant_id: str = "tenant-a",
     index_versions: tuple[str, ...] = ("index-active",),
 ) -> AuthFilter:
+    active_documents = tuple(document_ids)
     return AuthFilter(
         tenant_id=tenant_id,
         workspace_id="hr",
-        allowed_document_ids=frozenset(document_ids),
+        allowed_document_ids=frozenset(active_documents),
         allowed_index_versions=frozenset(index_versions),
+        allowed_document_versions=frozenset(
+            (document_id, 1, index_version)
+            for document_id in active_documents
+            for index_version in index_versions
+        ),
     )
 
 
@@ -61,9 +71,7 @@ def test_rrf_matches_verified_legacy_baseline_and_deduplicates() -> None:
     overlap = chunk("b", "B")
     third = chunk("c", "C")
 
-    results = reciprocal_rank_fusion(
-        ([first, overlap, overlap], [overlap, third]), top_k=3, k=60
-    )
+    results = reciprocal_rank_fusion(([first, overlap, overlap], [overlap, third]), top_k=3, k=60)
 
     assert [item.chunk_id for item in results] == ["b", "a", "c"]
     assert results[0].score == pytest.approx(1 / 62 + 1 / 61)
@@ -94,9 +102,7 @@ async def test_bm25_hits_chinese_term_after_authorization_prefilter() -> None:
     )
     await store.upsert([allowed, unrelated, forbidden], [[1.0], [1.0], [1.0]], "index-active")
 
-    results = await store.search_lexical(
-        "年假申请", auth_filter("leave", "expense"), top_k=5
-    )
+    results = await store.search_lexical("年假申请", auth_filter("leave", "expense"), top_k=5)
 
     assert [item.chunk_id for item in results] == ["allowed"]
     assert results[0].score is not None and results[0].score > 0
@@ -119,9 +125,7 @@ async def test_hybrid_prefilters_tenant_document_and_index_version_before_scorin
     semantic_query = "休假权益"
     semantic_vector = await embedding.embed_query(semantic_query)
     await store.upsert([active], [semantic_vector], "index-active")
-    await store.upsert(
-        [stale], await embedding.embed_documents([stale.content]), "index-stale"
-    )
+    await store.upsert([stale], await embedding.embed_documents([stale.content]), "index-stale")
     await store.upsert(
         [forbidden, other_tenant],
         await embedding.embed_documents([forbidden.content, other_tenant.content]),
@@ -129,9 +133,7 @@ async def test_hybrid_prefilters_tenant_document_and_index_version_before_scorin
     )
     retriever = OfflineHybridRetriever(store, embedding)
 
-    results = await retriever.aretrieve(
-        semantic_query, auth_filter("leave"), top_k=5
-    )
+    results = await retriever.aretrieve(semantic_query, auth_filter("leave"), top_k=5)
 
     assert isinstance(retriever, Retriever)
     assert [item.chunk_id for item in results] == ["active"]
@@ -164,3 +166,51 @@ async def test_hybrid_fails_closed_without_both_allowlists() -> None:
 
     assert await retriever.aretrieve("年假", missing_documents, top_k=3) == []
     assert await retriever.aretrieve("年假", missing_versions, top_k=3) == []
+
+
+@pytest.mark.asyncio
+async def test_production_hybrid_uses_fixed_branches_and_exports_eval_record() -> None:
+    dense_first = chunk("dense", "带薪休假权益", document_id="leave")
+    lexical_first = chunk("lexical", "年假申请", document_id="leave")
+    dense_first = dense_first.model_copy(update={"index_version": "index-active"})
+    lexical_first = lexical_first.model_copy(update={"index_version": "index-active"})
+    store = Mock()
+    store.search_dense = AsyncMock(return_value=[dense_first, lexical_first])
+    store.search_lexical = AsyncMock(return_value=[lexical_first])
+    retriever = HybridRetriever(store, FakeEmbedding())
+
+    run = await retriever.aretrieve_with_baseline("年假申请", auth_filter("leave"))
+
+    assert [item.chunk_id for item in run.fused] == ["lexical", "dense"]
+    assert store.search_dense.call_args.kwargs["top_k"] == 30
+    assert store.search_lexical.call_args.kwargs["top_k"] == 30
+    exported = run.to_eval_record()
+    assert exported["parameters"] == {
+        "dense_top_k": 30,
+        "lexical_top_k": 30,
+        "rrf_k": 60,
+        "fusion_top_k": 20,
+    }
+    assert exported["fused"][0]["chunk_id"] == "lexical"
+    json.dumps(exported, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_production_hybrid_fails_closed_without_exact_version_bindings() -> None:
+    store = Mock()
+    store.search_dense = AsyncMock()
+    store.search_lexical = AsyncMock()
+    embedding = Mock()
+    embedding.embed_query = AsyncMock()
+    retriever = HybridRetriever(store, embedding)
+    incomplete = AuthFilter(
+        tenant_id="tenant-a",
+        workspace_id="hr",
+        allowed_document_ids=frozenset({"leave"}),
+        allowed_index_versions=frozenset({"index-active"}),
+    )
+
+    assert await retriever.aretrieve("年假", incomplete) == []
+    embedding.embed_query.assert_not_called()
+    store.search_dense.assert_not_called()
+    store.search_lexical.assert_not_called()

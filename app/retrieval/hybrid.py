@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
 
 from app.retrieval.base import EmbeddingProvider, VectorStore
 from app.schemas.retrieval import AuthFilter, RetrievedChunk
@@ -38,9 +40,7 @@ def reciprocal_rank_fusion(
         raise ValueError("RRF k must be positive")
 
     scores: dict[tuple[str, str, str, int, str], float] = {}
-    canonical: dict[
-        tuple[str, str, str, int, str], tuple[int, int, RetrievedChunk]
-    ] = {}
+    canonical: dict[tuple[str, str, str, int, str], tuple[int, int, RetrievedChunk]] = {}
     for source_priority, ranked in enumerate(ranked_lists):
         seen_in_source: set[tuple[str, str, str, int, str]] = set()
         for rank, chunk in enumerate(ranked, start=1):
@@ -63,9 +63,7 @@ def reciprocal_rank_fusion(
         ),
     )[:top_k]
     return [
-        canonical[identity][2].model_copy(
-            update={"score": scores[identity]}, deep=True
-        )
+        canonical[identity][2].model_copy(update={"score": scores[identity]}, deep=True)
         for identity in ordered
     ]
 
@@ -98,22 +96,117 @@ class OfflineHybridRetriever:
             return []
         if top_k < 1:
             raise ValueError("top_k must be positive")
-        if (
-            not auth_filter.allowed_document_ids
-            or not auth_filter.allowed_index_versions
-        ):
+        if not auth_filter.allowed_document_ids or not auth_filter.allowed_index_versions:
             return []
 
         query_vector = await self._embedding.embed_query(query)
         candidate_k = top_k * self._candidate_multiplier
         dense, lexical = await asyncio.gather(
-            self._vector_store.search_dense(
-                query_vector, auth_filter, top_k=candidate_k
-            ),
+            self._vector_store.search_dense(query_vector, auth_filter, top_k=candidate_k),
             self._vector_store.search_lexical(query, auth_filter, top_k=candidate_k),
         )
-        return reciprocal_rank_fusion(
-            (dense, lexical), top_k=top_k, k=self._rrf_k
+        return reciprocal_rank_fusion((dense, lexical), top_k=top_k, k=self._rrf_k)
+
+
+@dataclass(frozen=True)
+class HybridRetrievalRun:
+    """One reproducible two-branch retrieval run, ready for eval export."""
+
+    query: str
+    dense_top_k: int
+    lexical_top_k: int
+    rrf_k: int
+    fusion_top_k: int
+    dense: tuple[RetrievedChunk, ...]
+    lexical: tuple[RetrievedChunk, ...]
+    fused: tuple[RetrievedChunk, ...]
+
+    def to_eval_record(self) -> dict[str, Any]:
+        """Return a JSON-serializable record without recomputing retrieval."""
+        return {
+            "schema_version": "retrieval-baseline-v1",
+            "query": self.query,
+            "parameters": {
+                "dense_top_k": self.dense_top_k,
+                "lexical_top_k": self.lexical_top_k,
+                "rrf_k": self.rrf_k,
+                "fusion_top_k": self.fusion_top_k,
+            },
+            "dense": _eval_hits(self.dense),
+            "lexical": _eval_hits(self.lexical),
+            "fused": _eval_hits(self.fused),
+        }
+
+
+class HybridRetriever:
+    """Dense 30 + native BM25 30 -> deterministic RRF 20 production path."""
+
+    def __init__(
+        self,
+        vector_store: VectorStore,
+        embedding: EmbeddingProvider,
+        *,
+        dense_top_k: int = 30,
+        lexical_top_k: int = 30,
+        rrf_k: int = 60,
+        fusion_top_k: int = 20,
+    ) -> None:
+        limits = (dense_top_k, lexical_top_k, rrf_k, fusion_top_k)
+        if any(value < 1 for value in limits):
+            raise ValueError("hybrid retrieval limits must be positive")
+        self._vector_store = vector_store
+        self._embedding = embedding
+        self._dense_top_k = dense_top_k
+        self._lexical_top_k = lexical_top_k
+        self._rrf_k = rrf_k
+        self._fusion_top_k = fusion_top_k
+
+    async def aretrieve(
+        self,
+        query: str,
+        auth_filter: AuthFilter,
+        top_k: int | None = None,
+    ) -> list[RetrievedChunk]:
+        run = await self.aretrieve_with_baseline(query, auth_filter, top_k=top_k)
+        return list(run.fused)
+
+    async def aretrieve_with_baseline(
+        self,
+        query: str,
+        auth_filter: AuthFilter,
+        *,
+        top_k: int | None = None,
+    ) -> HybridRetrievalRun:
+        fusion_top_k = self._fusion_top_k if top_k is None else top_k
+        if fusion_top_k < 1:
+            raise ValueError("top_k must be positive")
+        if not query.strip() or not _has_complete_authorization(auth_filter):
+            return HybridRetrievalRun(
+                query=query,
+                dense_top_k=self._dense_top_k,
+                lexical_top_k=self._lexical_top_k,
+                rrf_k=self._rrf_k,
+                fusion_top_k=fusion_top_k,
+                dense=(),
+                lexical=(),
+                fused=(),
+            )
+
+        query_vector = await self._embedding.embed_query(query)
+        dense, lexical = await asyncio.gather(
+            self._vector_store.search_dense(query_vector, auth_filter, top_k=self._dense_top_k),
+            self._vector_store.search_lexical(query, auth_filter, top_k=self._lexical_top_k),
+        )
+        fused = reciprocal_rank_fusion((dense, lexical), top_k=fusion_top_k, k=self._rrf_k)
+        return HybridRetrievalRun(
+            query=query,
+            dense_top_k=self._dense_top_k,
+            lexical_top_k=self._lexical_top_k,
+            rrf_k=self._rrf_k,
+            fusion_top_k=fusion_top_k,
+            dense=tuple(dense),
+            lexical=tuple(lexical),
+            fused=tuple(fused),
         )
 
 
@@ -125,3 +218,29 @@ def _chunk_identity(chunk: RetrievedChunk) -> tuple[str, str, str, int, str]:
         chunk.document_version,
         chunk.chunk_id,
     )
+
+
+def _has_complete_authorization(auth_filter: AuthFilter) -> bool:
+    return bool(
+        auth_filter.allowed_document_ids
+        and auth_filter.allowed_index_versions
+        and auth_filter.allowed_document_versions
+    )
+
+
+def _eval_hits(chunks: Sequence[RetrievedChunk]) -> list[dict[str, Any]]:
+    return [
+        {
+            "rank": rank,
+            "tenant_id": chunk.tenant_id,
+            "workspace_id": chunk.workspace_id,
+            "document_id": chunk.document_id,
+            "document_version": chunk.document_version,
+            "index_version": chunk.index_version,
+            "chunk_id": chunk.chunk_id,
+            "title": chunk.title,
+            "content": chunk.content,
+            "score": chunk.score,
+        }
+        for rank, chunk in enumerate(chunks, start=1)
+    ]

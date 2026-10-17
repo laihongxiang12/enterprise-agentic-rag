@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppMode = Literal["fake", "local", "real"]
@@ -43,8 +43,12 @@ class Settings(BaseSettings):
     redis_url: SecretStr | None = None
     milvus_uri: str | None = None
     test_milvus_uri: str | None = None
-    milvus_collection: str = "enterprise_rag_chunks"
+    milvus_collection: str = "enterprise_rag_hybrid_chunks"
     embedding_dimension: int = 128
+    retrieval_dense_top_k: int = Field(default=30, ge=1, le=16_384)
+    retrieval_lexical_top_k: int = Field(default=30, ge=1, le=16_384)
+    retrieval_rrf_k: int = Field(default=60, ge=1)
+    retrieval_fusion_top_k: int = Field(default=20, ge=1, le=16_384)
 
     @model_validator(mode="after")
     def validate_real_mode(self) -> Self:

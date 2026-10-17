@@ -1,4 +1,4 @@
-"""Milvus 2.5 vector adapter with mandatory server-side authorization filters."""
+"""Milvus 2.5 dense/BM25 adapter with mandatory server-side authorization."""
 
 from __future__ import annotations
 
@@ -11,7 +11,12 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
-from pymilvus import DataType, MilvusClient  # type: ignore[import-untyped]
+from pymilvus import (  # type: ignore[import-untyped]
+    DataType,
+    Function,
+    FunctionType,
+    MilvusClient,
+)
 
 from app.schemas.retrieval import AuthFilter, RetrievedChunk
 
@@ -35,7 +40,7 @@ _OUTPUT_FIELDS = [
 
 
 class MilvusVectorStore:
-    """Production-shaped dense adapter; lexical search is added in Stage 08."""
+    """Production-shaped dense and native BM25 adapter."""
 
     def __init__(
         self,
@@ -161,8 +166,33 @@ class MilvusVectorStore:
         auth_filter: AuthFilter,
         top_k: int,
     ) -> list[RetrievedChunk]:
-        del query, auth_filter, top_k
-        raise NotImplementedError("Milvus lexical/BM25 search is implemented in Stage 08")
+        if top_k < 1 or top_k > 16_384:
+            raise ValueError("top_k must be between 1 and 16384")
+        if not query.strip():
+            return []
+        if (
+            not auth_filter.allowed_document_ids
+            or not auth_filter.allowed_index_versions
+            or not auth_filter.allowed_document_versions
+        ):
+            return []
+        expression, parameters = _authorization_filter(auth_filter)
+        await self.initialize()
+        raw = await asyncio.to_thread(
+            self._client.search,
+            collection_name=self._collection_name,
+            data=[query],
+            anns_field="sparse_embedding",
+            filter=expression,
+            filter_params=parameters,
+            limit=top_k,
+            output_fields=_OUTPUT_FIELDS,
+            search_params={"metric_type": "BM25", "params": {}},
+            consistency_level="Strong",
+            timeout=self._timeout,
+        )
+        hits = raw[0] if raw else []
+        return [_retrieved_chunk(hit) for hit in hits]
 
     async def delete_version(
         self,
@@ -175,8 +205,7 @@ class MilvusVectorStore:
         if document_version < 1:
             raise ValueError("document_version must be positive")
         if not all(
-            value.strip()
-            for value in (tenant_id, workspace_id, document_id, index_version)
+            value.strip() for value in (tenant_id, workspace_id, document_id, index_version)
         ):
             raise ValueError("delete scope values must not be empty")
         await self.initialize()
@@ -244,6 +273,25 @@ class MilvusVectorStore:
             datatype=DataType.FLOAT_VECTOR,
             dim=self._dimension,
         )
+        schema.add_field(
+            field_name="lexical_text",
+            datatype=DataType.VARCHAR,
+            max_length=65_535,
+            enable_analyzer=True,
+            analyzer_params={"tokenizer": "jieba"},
+        )
+        schema.add_field(
+            field_name="sparse_embedding",
+            datatype=DataType.SPARSE_FLOAT_VECTOR,
+        )
+        schema.add_function(
+            Function(
+                name="lexical_bm25",
+                function_type=FunctionType.BM25,
+                input_field_names=["lexical_text"],
+                output_field_names=["sparse_embedding"],
+            )
+        )
         _add_varchar(schema, "tenant_id", 128)
         _add_varchar(schema, "workspace_id", 128)
         _add_varchar(schema, "document_id", 256)
@@ -262,9 +310,7 @@ class MilvusVectorStore:
             max_capacity=128,
             max_length=256,
         )
-        schema.add_field(
-            field_name="page", datatype=DataType.INT64, nullable=True
-        )
+        schema.add_field(field_name="page", datatype=DataType.INT64, nullable=True)
         schema.add_field(
             field_name="heading_path",
             datatype=DataType.ARRAY,
@@ -280,6 +326,13 @@ class MilvusVectorStore:
             index_name="dense_embedding_idx",
             index_type="AUTOINDEX",
             metric_type="COSINE",
+        )
+        indexes.add_index(
+            field_name="sparse_embedding",
+            index_name="sparse_embedding_idx",
+            index_type="SPARSE_INVERTED_INDEX",
+            metric_type="BM25",
+            params={"inverted_index_algo": "DAAT_MAXSCORE"},
         )
         for field_name in (
             "tenant_id",
@@ -311,10 +364,45 @@ class MilvusVectorStore:
         fields = {field["name"]: field for field in description.get("fields", [])}
         if description.get("enable_dynamic_field", False):
             raise ValueError("Milvus collection must disable dynamic fields")
-        required = {"pk", "dense_embedding", *_OUTPUT_FIELDS, "ready"}
+        required = {
+            "pk",
+            "dense_embedding",
+            "lexical_text",
+            "sparse_embedding",
+            *_OUTPUT_FIELDS,
+            "ready",
+        }
         missing = required.difference(fields)
         if missing:
             raise ValueError(f"Milvus collection schema is missing fields: {sorted(missing)}")
+        if fields["sparse_embedding"].get("type") != DataType.SPARSE_FLOAT_VECTOR:
+            raise ValueError("Milvus sparse_embedding field must be SPARSE_FLOAT_VECTOR")
+        lexical_parameters = fields["lexical_text"].get("params", {})
+        analyzer_enabled = str(lexical_parameters.get("enable_analyzer", "")).lower()
+        try:
+            analyzer = json.loads(lexical_parameters.get("analyzer_params", "{}"))
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError("Milvus lexical analyzer configuration is invalid") from error
+        if analyzer_enabled != "true" or analyzer.get("tokenizer") != "jieba":
+            raise ValueError("Milvus lexical_text field must use the Jieba analyzer")
+        functions = description.get("functions", [])
+        if not any(
+            function.get("type") == FunctionType.BM25
+            and function.get("input_field_names") == ["lexical_text"]
+            and function.get("output_field_names") == ["sparse_embedding"]
+            for function in functions
+        ):
+            raise ValueError("Milvus collection is missing the lexical BM25 function")
+        indexes = set(
+            await asyncio.to_thread(
+                self._client.list_indexes,
+                collection_name=self._collection_name,
+                timeout=self._timeout,
+            )
+        )
+        missing_indexes = {"dense_embedding_idx", "sparse_embedding_idx"}.difference(indexes)
+        if missing_indexes:
+            raise ValueError(f"Milvus collection is missing indexes: {sorted(missing_indexes)}")
         parameters = fields["dense_embedding"].get("params", {})
         actual_dimension = int(parameters.get("dim", 0))
         if actual_dimension != self._dimension:
@@ -351,6 +439,7 @@ class MilvusVectorStore:
         return {
             "pk": primary_key,
             "dense_embedding": vector,
+            "lexical_text": f"{chunk.title}\n{chunk.content}",
             "tenant_id": chunk.tenant_id,
             "workspace_id": chunk.workspace_id,
             "document_id": chunk.document_id,
@@ -370,9 +459,7 @@ class MilvusVectorStore:
 
     def _validate_dimension(self, vector: Sequence[float]) -> None:
         if len(vector) != self._dimension:
-            raise ValueError(
-                f"embedding dimension must be {self._dimension}, got {len(vector)}"
-            )
+            raise ValueError(f"embedding dimension must be {self._dimension}, got {len(vector)}")
         if not all(math.isfinite(value) for value in vector):
             raise ValueError("embedding values must be finite")
 
@@ -400,8 +487,7 @@ def _authorization_filter(auth_filter: AuthFilter) -> tuple[str, dict[str, objec
     }
     if auth_filter.group_ids:
         expression += (
-            "(visibility == {tenant_visibility} OR "
-            "ARRAY_CONTAINS_ANY(acl_groups, {group_ids}))"
+            "(visibility == {tenant_visibility} OR ARRAY_CONTAINS_ANY(acl_groups, {group_ids}))"
         )
         parameters["group_ids"] = sorted(auth_filter.group_ids)
     else:

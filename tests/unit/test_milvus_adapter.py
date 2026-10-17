@@ -10,7 +10,9 @@ from app.stores.milvus import MilvusVectorStore
 
 def scope() -> AuthFilter:
     return AuthFilter(
-        tenant_id="a", workspace_id="hr", group_ids=frozenset({"hr"}),
+        tenant_id="a",
+        workspace_id="hr",
+        group_ids=frozenset({"hr"}),
         allowed_document_ids=frozenset({"leave"}),
         allowed_index_versions=frozenset({"v1"}),
         allowed_document_versions=frozenset({("leave", 1, "v1")}),
@@ -19,43 +21,95 @@ def scope() -> AuthFilter:
 
 def chunk() -> RetrievedChunk:
     return RetrievedChunk(
-        tenant_id="a", workspace_id="hr", document_id="leave", document_version=1,
-        chunk_id="c", parent_id="p", content="Annual leave", title="Policy",
-        source_uri="fixture:///leave", visibility="restricted", acl_groups=["hr"],
+        tenant_id="a",
+        workspace_id="hr",
+        document_id="leave",
+        document_version=1,
+        chunk_id="c",
+        parent_id="p",
+        content="Annual leave",
+        title="Policy",
+        source_uri="fixture:///leave",
+        visibility="restricted",
+        acl_groups=["hr"],
     )
 
 
-@pytest.mark.parametrize("field", [
-    "allowed_document_ids", "allowed_index_versions", "allowed_document_versions",
-])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "allowed_document_ids",
+        "allowed_index_versions",
+        "allowed_document_versions",
+    ],
+)
 async def test_empty_authorization_never_connects(
-    monkeypatch: pytest.MonkeyPatch, field: str,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
 ) -> None:
     client = Mock(side_effect=AssertionError("must not connect"))
     monkeypatch.setattr("app.stores.milvus.MilvusClient", client)
     store = MilvusVectorStore("http://127.0.0.1:19530", "unit", 4)
-    assert await store.search_dense([1, 0, 0, 0], scope().model_copy(
-        update={field: frozenset()},
-    ), 10) == []
+    assert (
+        await store.search_dense(
+            [1, 0, 0, 0],
+            scope().model_copy(
+                update={field: frozenset()},
+            ),
+            10,
+        )
+        == []
+    )
+    client.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "allowed_document_ids",
+        "allowed_index_versions",
+        "allowed_document_versions",
+    ],
+)
+async def test_empty_lexical_authorization_never_connects(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    client = Mock(side_effect=AssertionError("must not connect"))
+    monkeypatch.setattr("app.stores.milvus.MilvusClient", client)
+    store = MilvusVectorStore("http://127.0.0.1:19530", "unit", 4)
+    assert (
+        await store.search_lexical(
+            "年假",
+            scope().model_copy(
+                update={field: frozenset()},
+            ),
+            10,
+        )
+        == []
+    )
     client.assert_not_called()
 
 
 @pytest.mark.parametrize("groups", [[], ["   "], ["中" * 100]])
 async def test_invalid_acl_is_rejected_before_connect(
-    monkeypatch: pytest.MonkeyPatch, groups: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    groups: list[str],
 ) -> None:
     client = Mock(side_effect=AssertionError("must not connect"))
     monkeypatch.setattr("app.stores.milvus.MilvusClient", client)
     store = MilvusVectorStore("http://127.0.0.1:19530", "unit", 4)
     with pytest.raises(ValueError, match="ACL"):
-        await store.upsert([chunk().model_copy(update={"acl_groups": groups})],
-                           [[1, 0, 0, 0]], "v1")
+        await store.upsert(
+            [chunk().model_copy(update={"acl_groups": groups})], [[1, 0, 0, 0]], "v1"
+        )
     client.assert_not_called()
 
 
 @pytest.mark.parametrize("vector", [[1, 0], [float("nan"), 0, 0, 0]])
 async def test_invalid_vector_never_connects(
-    monkeypatch: pytest.MonkeyPatch, vector: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+    vector: list[float],
 ) -> None:
     client = Mock(side_effect=AssertionError("must not connect"))
     monkeypatch.setattr("app.stores.milvus.MilvusClient", client)
@@ -94,4 +148,26 @@ async def test_search_timeout_keeps_server_filter_and_propagates() -> None:
     assert sent["filter_params"]["ver_0"] == 1
     assert sent["filter_params"]["idx_0"] == "v1"
     client.search.assert_called_once()
+    await store.close()
+
+
+async def test_lexical_search_uses_native_bm25_and_identical_server_filter() -> None:
+    store = MilvusVectorStore("http://127.0.0.1:19530", "unit", 4, timeout_seconds=0.1)
+    client = Mock()
+    client.search.return_value = [[]]
+    store._client = client
+    store._initialized = True
+
+    assert await store.search_lexical("年假申请", scope(), 30) == []
+
+    sent = client.search.call_args.kwargs
+    assert sent["data"] == ["年假申请"]
+    assert sent["anns_field"] == "sparse_embedding"
+    assert sent["limit"] == 30
+    assert sent["search_params"]["metric_type"] == "BM25"
+    assert "ready == true" in sent["filter"]
+    assert "ARRAY_CONTAINS_ANY" in sent["filter"]
+    assert sent["filter_params"]["doc_0"] == "leave"
+    assert sent["filter_params"]["ver_0"] == 1
+    assert sent["filter_params"]["idx_0"] == "v1"
     await store.close()

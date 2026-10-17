@@ -50,10 +50,9 @@ INVERTED indexes. Upserted rows are marked ready; search additionally requires
 the active index version from PostgreSQL. Delete requires the complete tenant,
 workspace, document, document-version, and index-version scope.
 
-Native sparse/BM25 fields and hybrid search are deliberately deferred to Stage
-08. Stage 07's lexical method raises `NotImplementedError` rather than silently
-falling back to an unsafe or fake production path. Existing FAISS/BM25 examples
-remain unchanged as offline baselines.
+Stage 08 adds native sparse/BM25 fields and hybrid retrieval in a new collection;
+see ADR 002. Existing FAISS/BM25 examples remain unchanged as offline baselines,
+and the Stage 07 dense-only collection is preserved for explicit migration.
 
 Each adapter owns a unique PyMilvus connection alias. PyMilvus clients otherwise
 share a URI-based connection, so closing one client can disconnect another live
