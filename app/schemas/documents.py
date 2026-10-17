@@ -28,6 +28,7 @@ class DocumentMeta(ContractModel):
     title: NonEmptyString
     source_uri: NonEmptyString
     source_type: Literal["pdf", "markdown", "html"]
+    visibility: Literal["restricted", "tenant"] = "restricted"
     acl_groups: list[str] = Field(default_factory=list)
     content_hash: NonEmptyString
     acl_version: int = Field(ge=1)

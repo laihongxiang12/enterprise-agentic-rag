@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     app_mode: AppMode = "fake"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    bind_host: str = "127.0.0.1"
+
+    dev_auth_enabled: bool = False
+    dev_auth_secret: SecretStr | None = None
+    dev_auth_issuer: str = "enterprise-agentic-rag-dev"
+    dev_auth_audience: str = "enterprise-agentic-rag"
 
     llm_provider: Literal["deepseek", "openai_compatible"] = "deepseek"
     llm_base_url: str = "https://api.deepseek.com"
@@ -41,6 +47,15 @@ class Settings(BaseSettings):
         """Prevent an accidental real-mode start without an LLM credential."""
         if self.app_mode == "real" and self.llm_api_key is None:
             raise ValueError("LLM_API_KEY is required when APP_MODE=real")
+        if self.dev_auth_enabled:
+            if self.app_env != "local" or self.app_mode == "real":
+                raise ValueError("DEV_AUTH_ENABLED is restricted to local non-real mode")
+            if self.bind_host not in {"127.0.0.1", "::1", "localhost"}:
+                raise ValueError("DEV_AUTH_ENABLED requires a loopback BIND_HOST")
+            if self.dev_auth_secret is None:
+                raise ValueError("DEV_AUTH_SECRET is required when DEV_AUTH_ENABLED=true")
+            if len(self.dev_auth_secret.get_secret_value()) < 32:
+                raise ValueError("DEV_AUTH_SECRET must contain at least 32 characters")
         return self
 
 

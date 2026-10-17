@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import Annotated, Literal, Protocol, cast, runtime_checkable
 
-from pydantic import Field, field_validator
+from pydantic import Field, model_validator
 
 from app.ingestion.chunking import ChunkContext, ChunkSet, ParentChildChunker
 from app.ingestion.dedup import canonicalize_text, exact_content_hash, normalize_acl_groups
@@ -24,17 +24,17 @@ class IngestionRequest(ContractModel):
     tenant_id: NonEmptyString
     workspace_id: NonEmptyString
     document_id: NonEmptyString
-    acl_groups: list[str] = Field(min_length=1)
+    acl_groups: list[str] = Field(default_factory=list)
+    visibility: Literal["restricted", "tenant"] = "restricted"
     index_schema_version: NonEmptyString = "chunks-v1"
 
-    @field_validator("acl_groups")
-    @classmethod
-    def require_explicit_acl_groups(cls, groups: list[str]) -> list[str]:
-        """Reject an ambiguous empty ACL until explicit tenant visibility exists."""
-        normalized = list(normalize_acl_groups(groups))
-        if not normalized:
-            raise ValueError("at least one non-empty ACL group is required")
-        return normalized
+    @model_validator(mode="after")
+    def validate_visibility_and_acl(self) -> IngestionRequest:
+        """Permit empty ACLs only for explicitly tenant-visible documents."""
+        self.acl_groups = list(normalize_acl_groups(self.acl_groups))
+        if self.visibility == "restricted" and not self.acl_groups:
+            raise ValueError("restricted documents require at least one ACL group")
+        return self
 
 
 class StoredVersion(ContractModel):
@@ -132,6 +132,7 @@ class IngestionPipeline:
             title=canonical.title,
             source_uri=canonical.source_uri,
             source_type=_source_type(canonical),
+            visibility=request.visibility,
             acl_groups=list(acl_groups),
             content_hash=content_hash,
             acl_version=acl_version,
@@ -149,6 +150,7 @@ class IngestionPipeline:
                 acl_groups=list(acl_groups),
                 acl_version=acl_version,
                 index_version=index_version,
+                visibility=request.visibility,
             ),
         )
         staged = StoredVersion(document=document, chunks=chunks)

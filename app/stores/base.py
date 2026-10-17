@@ -2,7 +2,8 @@
 
 from typing import Protocol, runtime_checkable
 
-from app.schemas.documents import DocumentMeta
+from app.schemas.documents import DocumentMeta, Principal
+from app.schemas.retrieval import AuthorizationScope
 
 
 @runtime_checkable
@@ -10,12 +11,27 @@ class MetadataStore(Protocol):
     async def get_document(
         self,
         tenant_id: str,
+        workspace_id: str,
         document_id: str,
     ) -> DocumentMeta | None: ...
 
     async def put_document(self, document: DocumentMeta) -> None: ...
 
-    async def delete_document(self, tenant_id: str, document_id: str) -> None: ...
+    async def delete_document(
+        self, tenant_id: str, workspace_id: str, document_id: str
+    ) -> bool: ...
+
+    async def authorization_scope(
+        self, principal: Principal, workspace_id: str
+    ) -> AuthorizationScope: ...
+
+    async def get_authorized_document(
+        self, principal: Principal, workspace_id: str, document_id: str
+    ) -> DocumentMeta | None: ...
+
+    async def delete_authorized_document(
+        self, principal: Principal, workspace_id: str, document_id: str
+    ) -> bool: ...
 
 
 @runtime_checkable

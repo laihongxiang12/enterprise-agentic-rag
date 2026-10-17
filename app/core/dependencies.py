@@ -32,7 +32,13 @@ def build_principal(identity: VerifiedIdentity) -> Principal:
 
 @runtime_checkable
 class PolicyEngine(Protocol):
-    def authorize_read(self, principal: Principal, document: DocumentMeta) -> bool: ...
+    def authorize_read(
+        self,
+        principal: Principal,
+        document: DocumentMeta,
+        *,
+        workspace_authorized: bool,
+    ) -> bool: ...
 
     def authorize_tool(self, principal: Principal, tool_name: str) -> bool: ...
 

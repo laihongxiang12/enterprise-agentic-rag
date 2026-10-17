@@ -2,7 +2,7 @@
 
 这是 `all-in-rag` 工作树中的增量产品子项目。旧 `code/`、`data/`、`docs/`、`models/` 和原虚拟环境继续作为 baseline；新服务从本目录独立安装、测试和运行。
 
-当前阶段只提供 FastAPI 应用工厂、配置边界、统一错误结构和 `/health/live`。尚未连接 Milvus、PostgreSQL、Redis 或真实 LLM，不能把健康检查成功解释为完整 RAG 已可用。
+当前实现包含 FastAPI 基础、严格契约、离线 Fake、文档 Loader、版本化 Ingestion，以及 PostgreSQL 元数据/ACL adapter。Milvus、Redis、Agent 图和真实 LLM 尚未完成，不能把健康检查或 Fake 测试解释为完整 RAG 已可用。
 
 ## WSL 快速开始
 
@@ -45,7 +45,13 @@ cp .env.example .env
 
 ## Fake Mode 与 Real Mode 的边界
 
-本阶段的 Fake Mode 仅证明 HTTP/config 契约能够离线运行，不代表 Milvus、ACL、检索、Agent、LLM、缓存或部署已经完成。Real Mode 也不会静默降级为 Fake Mode。
+Fake Mode 证明契约、解析、分块、版本切换和授权规则能够离线运行，不代表 PostgreSQL 集成、Milvus、Agent、LLM、缓存或部署已经完成。Real Mode 不会静默降级为 Fake Mode。
+
+## PostgreSQL 与开发认证
+
+PostgreSQL migration、权限边界和集成测试说明见 [`docs/security.md`](docs/security.md)。没有设置 `TEST_DATABASE_URL` 时真实 PostgreSQL 测试会明确跳过。
+
+`DEV_AUTH_ENABLED` 只允许用于 local、loopback、非 real 模式，并要求至少 32 字符的开发密钥。它是签名的演示身份边界，不是企业 SSO。
 
 ## 来源与许可
 

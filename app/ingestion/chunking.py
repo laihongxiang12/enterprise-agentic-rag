@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID, uuid5
 
 from pydantic import Field
@@ -39,6 +39,7 @@ class ChunkContext(ContractModel):
     acl_groups: list[str] = Field(default_factory=list)
     acl_version: int = Field(ge=1)
     index_version: NonEmptyString
+    visibility: Literal["restricted", "tenant"] = "restricted"
 
 
 class ParentChunk(ContractModel):
@@ -58,6 +59,7 @@ class ParentChunk(ContractModel):
     acl_groups: list[str] = Field(default_factory=list)
     acl_version: int = Field(ge=1)
     index_version: NonEmptyString
+    visibility: Literal["restricted", "tenant"] = "restricted"
 
 
 class ChildChunk(ContractModel):
@@ -78,6 +80,7 @@ class ChildChunk(ContractModel):
     acl_groups: list[str] = Field(default_factory=list)
     acl_version: int = Field(ge=1)
     index_version: NonEmptyString
+    visibility: Literal["restricted", "tenant"] = "restricted"
 
 
 class ChunkSet(ContractModel):
@@ -180,6 +183,7 @@ def _common_fields(document: LoadedDocument, context: ChunkContext) -> dict[str,
         "acl_groups": context.acl_groups.copy(),
         "acl_version": context.acl_version,
         "index_version": context.index_version,
+        "visibility": context.visibility,
     }
 
 
