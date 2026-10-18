@@ -16,6 +16,19 @@ def route_payload(route: str, *, confidence: float = 0.9) -> str:
     return json.dumps({"route": route, "confidence": confidence, "reason": f"choose {route}"})
 
 
+def sufficient_grade_payload() -> str:
+    return json.dumps(
+        {
+            "relevant": True,
+            "sufficient": True,
+            "confidence": 0.9,
+            "missing_aspects": [],
+            "recommended_action": "answer",
+            "reason": "evidence is sufficient",
+        }
+    )
+
+
 def chunk() -> RetrievedChunk:
     return RetrievedChunk(
         tenant_id="tenant-a",
@@ -52,7 +65,8 @@ def context(
     response_override: str | None = None,
 ) -> tuple[AgentRuntimeContext, FakeLLM, FakeRetriever]:
     llm = FakeLLM(
-        responses={query: response_override or route_payload(route, confidence=confidence)}
+        responses={query: response_override or route_payload(route, confidence=confidence)},
+        schema_scripts={"EvidenceGrade": [sufficient_grade_payload()]},
     )
     retriever = FakeRetriever(responses={query: [chunk()]})
     runtime_context = AgentRuntimeContext(
@@ -97,7 +111,11 @@ async def test_knowledge_route_uses_exact_trusted_filter() -> None:
 
     result = await run_graph(runtime_context, query)
 
-    assert result["response"] == {"action": "retrieved", "count": 1}
+    assert result["response"] == {
+        "action": "generate",
+        "generation": "deferred_to_stage_14",
+        "evidence_count": 1,
+    }
     assert result["retrieved_chunks"][0]["chunk_id"] == "leave-1"
     assert result["remaining_tool_calls"] == 7
     assert retriever.calls == [(query, runtime_context.auth_filter, 20)]

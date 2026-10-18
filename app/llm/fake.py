@@ -16,11 +16,13 @@ class FakeLLM:
         responses: Mapping[str, str] | None = None,
         *,
         scripts: Mapping[str, Sequence[str | Exception]] | None = None,
+        schema_scripts: Mapping[str, Sequence[str | Exception]] | None = None,
         default_response: str = "fake-response",
         usage: Usage | None = None,
     ) -> None:
         self._responses = dict(responses or {})
         self._scripts = {key: list(values) for key, values in (scripts or {}).items()}
+        self._schema_scripts = {key: list(values) for key, values in (schema_scripts or {}).items()}
         self._default_response = default_response
         self._usage = usage or Usage(cost_is_estimate=False)
         self.calls: list[tuple[LLMMessage, ...]] = []
@@ -39,7 +41,13 @@ class FakeLLM:
         copied_messages = tuple(message.model_copy(deep=True) for message in messages)
         self.calls.append(copied_messages)
         key = messages[-1].content
-        scripted = self._scripts.get(key)
+        scripted = (
+            self._schema_scripts.get(response_schema.__name__)
+            if response_schema is not None
+            else None
+        )
+        if not scripted:
+            scripted = self._scripts.get(key)
         if scripted:
             outcome: str | Exception = scripted.pop(0)
         else:

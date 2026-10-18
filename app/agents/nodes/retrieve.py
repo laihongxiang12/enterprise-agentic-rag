@@ -1,9 +1,10 @@
-"""Terminal Stage 11 direct, retrieval, and policy-blocked nodes."""
+"""Direct, policy-blocked, and authorized retrieval nodes."""
 
 from langgraph.runtime import Runtime
 
 from app.agents.state import AgentRuntimeContext, append_error, blocked_update
 from app.schemas.agent import AgentState
+from app.schemas.retrieval import RetrievedChunk
 
 
 def direct_response(state: AgentState) -> AgentState:
@@ -33,15 +34,48 @@ async def retrieve(
         update["response"] = {"action": "policy_blocked"}
         return update
 
-    chunks = await context.retriever.aretrieve(
-        state.get("active_query", ""),
-        context.auth_filter,
-        context.limits.retrieval_top_k,
-    )
+    try:
+        chunks = await context.retriever.aretrieve(
+            state.get("active_query", ""),
+            context.auth_filter,
+            context.limits.retrieval_top_k,
+        )
+    except Exception:
+        return AgentState(
+            retrieved_chunks=[],
+            remaining_tool_calls=remaining_tool_calls - 1,
+            response={"action": "retrieval_failed"},
+            error_codes=append_error(state, "retrieval_failed"),
+        )
+    if any(not _is_authorized(chunk, context) for chunk in chunks):
+        return AgentState(
+            retrieved_chunks=[],
+            remaining_tool_calls=remaining_tool_calls - 1,
+            response={"action": "retrieval_failed"},
+            error_codes=append_error(state, "unauthorized_evidence"),
+        )
     return AgentState(
         retrieved_chunks=[chunk.model_dump(mode="json") for chunk in chunks],
         remaining_tool_calls=remaining_tool_calls - 1,
         response={"action": "retrieved", "count": len(chunks)},
+    )
+
+
+def _is_authorized(chunk: object, context: AgentRuntimeContext) -> bool:
+    if not isinstance(chunk, RetrievedChunk):
+        return False
+    auth_filter = context.auth_filter
+    return bool(
+        chunk.tenant_id == auth_filter.tenant_id
+        and chunk.workspace_id == auth_filter.workspace_id
+        and chunk.document_id in auth_filter.allowed_document_ids
+        and chunk.index_version in auth_filter.allowed_index_versions
+        and (
+            chunk.document_id,
+            chunk.document_version,
+            chunk.index_version,
+        )
+        in auth_filter.allowed_document_versions
     )
 
 

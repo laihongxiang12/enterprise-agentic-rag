@@ -22,6 +22,11 @@ class EvidenceGrade(ContractModel):
     reason: str
 
 
+class QueryRewrite(ContractModel):
+    query: str = Field(min_length=1, max_length=8000)
+    reason: str
+
+
 class AgentState(TypedDict, total=False):
     trace_id: str
     tenant_id: str

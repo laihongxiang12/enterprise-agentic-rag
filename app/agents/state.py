@@ -25,6 +25,10 @@ class AgentLimits:
     max_tool_calls: int = 8
     deadline_seconds: float = 30.0
     retrieval_top_k: int = 20
+    llm_grading_enabled: bool = True
+    grader_timeout_seconds: float = 10.0
+    rewrite_timeout_seconds: float = 10.0
+    grader_max_chars: int = 6_000
     sql_enabled: bool = False
     web_enabled: bool = False
 
@@ -37,6 +41,9 @@ class AgentLimits:
             self.max_tool_calls,
             self.deadline_seconds,
             self.retrieval_top_k,
+            self.grader_timeout_seconds,
+            self.rewrite_timeout_seconds,
+            self.grader_max_chars,
         )
         if any(value <= 0 for value in positive):
             raise ValueError("agent limits must be positive")
@@ -50,6 +57,10 @@ class AgentLimits:
             max_tool_calls=settings.agent_max_tool_calls,
             deadline_seconds=settings.agent_deadline_seconds,
             retrieval_top_k=settings.agent_retrieval_top_k,
+            llm_grading_enabled=settings.agent_llm_grading_enabled,
+            grader_timeout_seconds=settings.agent_grader_timeout_seconds,
+            rewrite_timeout_seconds=settings.agent_rewrite_timeout_seconds,
+            grader_max_chars=settings.agent_grader_max_chars,
             sql_enabled=settings.sql_tool_enabled,
             web_enabled=settings.web_tool_enabled,
         )

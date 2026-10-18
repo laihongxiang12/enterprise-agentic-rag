@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     agent_max_tool_calls: int = Field(default=8, ge=1, le=100)
     agent_deadline_seconds: float = Field(default=30.0, gt=0, le=300)
     agent_retrieval_top_k: int = Field(default=20, ge=1, le=100)
+    agent_llm_grading_enabled: bool = True
+    agent_grader_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    agent_rewrite_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    agent_grader_max_chars: int = Field(default=6_000, ge=256, le=50_000)
     sql_tool_enabled: bool = False
     web_tool_enabled: bool = False
 
