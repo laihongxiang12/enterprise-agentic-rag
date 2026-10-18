@@ -31,27 +31,48 @@ class AgentState(TypedDict, total=False):
     original_query: str
     active_query: str
     route: str
+    route_confidence: float
+    route_reason: str
     plan: list[str]
     retrieved_chunks: list[dict[str, object]]
     grade: dict[str, object]
     retry_count: int
     max_retries: int
     remaining_tool_calls: int
+    remaining_agent_rounds: int
     deadline_epoch_ms: int
     response: dict[str, object]
     error_codes: list[str]
 
 
-def new_agent_state(*, trace_id: str, tenant_id: str, user_id: str) -> AgentState:
+def new_agent_state(
+    *,
+    trace_id: str,
+    tenant_id: str,
+    user_id: str,
+    original_query: str = "",
+    workspace_id: str | None = None,
+    max_retries: int = 2,
+    remaining_tool_calls: int = 8,
+    remaining_agent_rounds: int = 6,
+    deadline_epoch_ms: int = 0,
+) -> AgentState:
     """Create state with fresh mutable containers for every request."""
     return AgentState(
         trace_id=trace_id,
         tenant_id=tenant_id,
         user_id=user_id,
+        workspace_id=workspace_id,
+        original_query=original_query,
+        active_query=original_query,
         plan=[],
         retrieved_chunks=[],
         grade={},
         response={},
         error_codes=[],
         retry_count=0,
+        max_retries=max_retries,
+        remaining_tool_calls=remaining_tool_calls,
+        remaining_agent_rounds=remaining_agent_rounds,
+        deadline_epoch_ms=deadline_epoch_ms,
     )

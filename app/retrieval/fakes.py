@@ -3,11 +3,44 @@
 import hashlib
 import math
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from app.retrieval.hybrid import tokenize_text
 from app.schemas.retrieval import AuthFilter, RetrievedChunk
+
+
+class FakeRetriever:
+    """Return authorized scripted chunks and record the exact trusted filter."""
+
+    def __init__(
+        self,
+        responses: Mapping[str, Sequence[RetrievedChunk]] | None = None,
+        *,
+        failures: Mapping[str, Exception] | None = None,
+    ) -> None:
+        self._responses = {
+            query: tuple(chunk.model_copy(deep=True) for chunk in chunks)
+            for query, chunks in (responses or {}).items()
+        }
+        self._failures = dict(failures or {})
+        self.calls: list[tuple[str, AuthFilter, int]] = []
+
+    async def aretrieve(
+        self,
+        query: str,
+        auth_filter: AuthFilter,
+        top_k: int,
+    ) -> list[RetrievedChunk]:
+        if top_k < 1:
+            raise ValueError("top_k must be positive")
+        self.calls.append((query, auth_filter.model_copy(deep=True), top_k))
+        failure = self._failures.get(query)
+        if failure is not None:
+            raise failure
+        return [chunk.model_copy(deep=True) for chunk in self._responses.get(query, ())][
+            :top_k
+        ]
 
 
 class FakeEmbedding:

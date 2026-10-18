@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = Field(default=1_024, ge=1, le=131_072)
     llm_input_price_per_million: Decimal | None = Field(default=None, ge=0)
     llm_output_price_per_million: Decimal | None = Field(default=None, ge=0)
+    agent_route_min_confidence: float = Field(default=0.6, ge=0, le=1)
+    agent_route_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    agent_max_rounds: int = Field(default=6, ge=1, le=20)
+    agent_max_tool_calls: int = Field(default=8, ge=1, le=100)
+    agent_deadline_seconds: float = Field(default=30.0, gt=0, le=300)
+    agent_retrieval_top_k: int = Field(default=20, ge=1, le=100)
+    sql_tool_enabled: bool = False
+    web_tool_enabled: bool = False
 
     database_url: SecretStr | None = None
     test_database_url: SecretStr | None = None
