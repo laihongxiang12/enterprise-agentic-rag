@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     sql_tool_enabled: bool = False
     web_tool_enabled: bool = False
 
+    upload_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
+
     database_url: SecretStr | None = None
     test_database_url: SecretStr | None = None
     redis_url: SecretStr | None = None

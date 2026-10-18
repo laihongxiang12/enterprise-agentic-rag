@@ -2,7 +2,7 @@
 
 这是 `all-in-rag` 工作树中的增量产品子项目。旧 `code/`、`data/`、`docs/`、`models/` 和原虚拟环境继续作为 baseline；新服务从本目录独立安装、测试和运行。
 
-当前实现包含 FastAPI 基础、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL、Milvus Dense + 原生 BM25 + RRF 混合检索，以及受限 Rerank、Parent Context 和引用构建。Redis、Agent 图和真实 LLM 尚未完成，不能把健康检查或当前检索测试解释为完整 RAG 已可用。
+当前实现包含 FastAPI 文档/查询接口、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL、Milvus Dense + 原生 BM25 + RRF 混合检索、受限 Rerank、LangGraph 有界检索图、Grounded Answer 与引用验证。Redis durable checkpoint、生产身份提供方、生产任务队列和部署组合仍属于后续阶段，不能把离线 API 测试解释为生产部署已完成。
 
 ## WSL 快速开始
 
@@ -46,6 +46,18 @@ cp .env.example .env
 ## Fake Mode 与 Real Mode 的边界
 
 Fake Mode 证明契约、解析、分块、版本切换和授权规则能够离线运行，不代表 PostgreSQL 集成、Milvus、Agent、LLM、缓存或部署已经完成。Real Mode 不会静默降级为 Fake Mode。
+
+## 文档与查询 API
+
+阶段 15 提供 `POST /v1/documents`、`GET/DELETE /v1/documents/{document_id}`、`POST /v1/query` 和 `POST /v1/query/stream`。所有 `/v1/*` 请求先由认证中间件验证 Bearer token，再构造服务端 `Principal`；API 请求不接受 `tenant_id`。文档上传使用 multipart，校验大小、扩展名/MIME、workspace、ACL、scope 和幂等键，成功后返回 `202` 与 pending job。生产任务队列和生产身份验证器必须通过 `ApiServices` 显式装配；未装配时接口返回 `503`，不会退化为匿名或 Fake 权限。
+
+SSE 事件顺序为 `trace`、`status`、零到多个 `delta`、`citations`、`done`；失败路径以 `error` 结束且不发送 `done`。当前 LangGraph 只产出最终答案，所以 `delta` 是最终答案的确定性分段，`status.streaming_mode` 为 `simulated_final_answer_segments` 且 `token_level=false`，并非模型 token-level streaming。
+
+离线 HTTP 契约测试不会监听端口或访问网络：
+
+```bash
+uv run pytest tests/integration/test_api.py -q
+```
 
 ## PostgreSQL 与开发认证
 

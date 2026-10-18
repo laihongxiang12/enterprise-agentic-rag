@@ -34,3 +34,26 @@ class DocumentMeta(ContractModel):
     acl_version: int = Field(ge=1)
     index_version: NonEmptyString
     status: Literal["pending", "processing", "ready", "failed", "deleted"]
+
+
+class DocumentUploadResponse(ContractModel):
+    """Accepted asynchronous ingestion task."""
+
+    document_id: NonEmptyString
+    job_id: NonEmptyString
+    status: Literal["pending", "processing", "ready", "failed"]
+
+
+class DocumentStatusResponse(DocumentUploadResponse):
+    """Caller-visible document processing state."""
+
+    workspace_id: NonEmptyString
+    filename: NonEmptyString
+    content_type: NonEmptyString
+
+
+class DocumentDeleteResponse(ContractModel):
+    """Deletion acknowledgement without leaking document metadata."""
+
+    document_id: NonEmptyString
+    status: Literal["deleted"] = "deleted"
