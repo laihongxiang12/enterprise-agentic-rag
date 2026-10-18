@@ -49,10 +49,17 @@ class Settings(BaseSettings):
     retrieval_lexical_top_k: int = Field(default=30, ge=1, le=16_384)
     retrieval_rrf_k: int = Field(default=60, ge=1)
     retrieval_fusion_top_k: int = Field(default=20, ge=1, le=16_384)
+    reranker_candidate_limit: int = Field(default=20, ge=5, le=100)
+    reranker_top_k: int = Field(default=8, ge=5, le=8)
+    reranker_timeout_seconds: float = Field(default=2.0, gt=0, le=60)
+    context_token_budget: int = Field(default=1_200, ge=1, le=100_000)
+    context_max_parents: int = Field(default=8, ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_real_mode(self) -> Self:
         """Prevent an accidental real-mode start without an LLM credential."""
+        if self.reranker_candidate_limit < self.reranker_top_k:
+            raise ValueError("RERANKER_CANDIDATE_LIMIT cannot be smaller than RERANKER_TOP_K")
         if self.app_mode == "real" and self.llm_api_key is None:
             raise ValueError("LLM_API_KEY is required when APP_MODE=real")
         if self.dev_auth_enabled:
