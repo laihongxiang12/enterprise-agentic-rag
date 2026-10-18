@@ -29,6 +29,10 @@ class AgentLimits:
     grader_timeout_seconds: float = 10.0
     rewrite_timeout_seconds: float = 10.0
     grader_max_chars: int = 6_000
+    max_subqueries: int = 4
+    subquery_concurrency: int = 2
+    planner_timeout_seconds: float = 10.0
+    context_token_budget: int = 1_200
     sql_enabled: bool = False
     web_enabled: bool = False
 
@@ -44,9 +48,17 @@ class AgentLimits:
             self.grader_timeout_seconds,
             self.rewrite_timeout_seconds,
             self.grader_max_chars,
+            self.max_subqueries,
+            self.subquery_concurrency,
+            self.planner_timeout_seconds,
+            self.context_token_budget,
         )
         if any(value <= 0 for value in positive):
             raise ValueError("agent limits must be positive")
+        if not 2 <= self.max_subqueries <= 4:
+            raise ValueError("max_subqueries must be between two and four")
+        if self.subquery_concurrency > self.max_subqueries:
+            raise ValueError("subquery_concurrency cannot exceed max_subqueries")
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "AgentLimits":
@@ -61,6 +73,10 @@ class AgentLimits:
             grader_timeout_seconds=settings.agent_grader_timeout_seconds,
             rewrite_timeout_seconds=settings.agent_rewrite_timeout_seconds,
             grader_max_chars=settings.agent_grader_max_chars,
+            max_subqueries=settings.agent_max_subqueries,
+            subquery_concurrency=settings.agent_subquery_concurrency,
+            planner_timeout_seconds=settings.agent_planner_timeout_seconds,
+            context_token_budget=settings.context_token_budget,
             sql_enabled=settings.sql_tool_enabled,
             web_enabled=settings.web_tool_enabled,
         )

@@ -47,7 +47,7 @@ async def retrieve(
             response={"action": "retrieval_failed"},
             error_codes=append_error(state, "retrieval_failed"),
         )
-    if any(not _is_authorized(chunk, context) for chunk in chunks):
+    if any(not is_authorized_chunk(chunk, context) for chunk in chunks):
         return AgentState(
             retrieved_chunks=[],
             remaining_tool_calls=remaining_tool_calls - 1,
@@ -61,7 +61,7 @@ async def retrieve(
     )
 
 
-def _is_authorized(chunk: object, context: AgentRuntimeContext) -> bool:
+def is_authorized_chunk(chunk: object, context: AgentRuntimeContext) -> bool:
     if not isinstance(chunk, RetrievedChunk):
         return False
     auth_filter = context.auth_filter

@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     agent_grader_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     agent_rewrite_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     agent_grader_max_chars: int = Field(default=6_000, ge=256, le=50_000)
+    agent_max_subqueries: int = Field(default=4, ge=2, le=4)
+    agent_subquery_concurrency: int = Field(default=2, ge=1, le=4)
+    agent_planner_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     sql_tool_enabled: bool = False
     web_tool_enabled: bool = False
 
@@ -83,6 +86,8 @@ class Settings(BaseSettings):
         """Prevent an accidental real-mode start without an LLM credential."""
         if self.reranker_candidate_limit < self.reranker_top_k:
             raise ValueError("RERANKER_CANDIDATE_LIMIT cannot be smaller than RERANKER_TOP_K")
+        if self.agent_subquery_concurrency > self.agent_max_subqueries:
+            raise ValueError("AGENT_SUBQUERY_CONCURRENCY cannot exceed AGENT_MAX_SUBQUERIES")
         if self.app_mode == "real" and self.llm_api_key is None:
             raise ValueError("LLM_API_KEY is required when APP_MODE=real")
         if (self.llm_input_price_per_million is None) != (

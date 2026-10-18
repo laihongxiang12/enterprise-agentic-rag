@@ -11,7 +11,12 @@ from app.llm.base import LLMError, LLMMessage
 from app.schemas.agent import AgentState, EvidenceGrade
 from app.schemas.retrieval import RetrievedChunk
 
-AfterGrade = Literal["generate_stub", "rewrite_query", "insufficient_evidence"]
+AfterGrade = Literal[
+    "generate_stub",
+    "rewrite_query",
+    "plan_multihop",
+    "insufficient_evidence",
+]
 
 
 async def grade_evidence(
@@ -144,7 +149,15 @@ def select_after_grade(state: AgentState) -> AfterGrade:
         and state.get("remaining_tool_calls", 0) > 0
         and state.get("remaining_agent_rounds", 0) > 0
     )
-    return "rewrite_query" if can_retry else "insufficient_evidence"
+    if can_retry:
+        return "rewrite_query"
+    can_decompose = (
+        grade.recommended_action == "decompose"
+        and state.get("retry_count", 0) < state.get("max_retries", 0)
+        and state.get("remaining_tool_calls", 0) >= 2
+        and state.get("remaining_agent_rounds", 0) > 0
+    )
+    return "plan_multihop" if can_decompose else "insufficient_evidence"
 
 
 def generation_stub(state: AgentState) -> AgentState:

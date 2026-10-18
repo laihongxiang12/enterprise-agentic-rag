@@ -2,7 +2,7 @@
 
 from typing import Literal, TypedDict
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.schemas.base import ContractModel
 
@@ -27,6 +27,22 @@ class QueryRewrite(ContractModel):
     reason: str
 
 
+class MultiHopPlan(ContractModel):
+    subqueries: list[str] = Field(min_length=2, max_length=4)
+    reason: str
+
+    @field_validator("subqueries")
+    @classmethod
+    def validate_unique_subqueries(cls, values: list[str]) -> list[str]:
+        stripped = [value.strip() for value in values]
+        if any(not value for value in stripped):
+            raise ValueError("subqueries must not be blank")
+        normalized = [" ".join(value.casefold().split()) for value in stripped]
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("subqueries must be unique")
+        return stripped
+
+
 class AgentState(TypedDict, total=False):
     trace_id: str
     tenant_id: str
@@ -39,7 +55,10 @@ class AgentState(TypedDict, total=False):
     route_confidence: float
     route_reason: str
     plan: list[str]
+    subqueries: list[str]
     retrieved_chunks: list[dict[str, object]]
+    evidence_coverage: dict[str, list[str]]
+    context_tokens: int
     grade: dict[str, object]
     retry_count: int
     max_retries: int
@@ -71,7 +90,10 @@ def new_agent_state(
         original_query=original_query,
         active_query=original_query,
         plan=[],
+        subqueries=[],
         retrieved_chunks=[],
+        evidence_coverage={},
+        context_tokens=0,
         grade={},
         response={},
         error_codes=[],

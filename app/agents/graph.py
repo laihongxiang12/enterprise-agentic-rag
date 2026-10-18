@@ -10,6 +10,7 @@ from app.agents.nodes.grade import (
     insufficient_evidence,
     select_after_grade,
 )
+from app.agents.nodes.plan import plan_and_retrieve, select_after_plan
 from app.agents.nodes.retrieve import direct_response, policy_blocked, retrieve
 from app.agents.nodes.rewrite import rewrite_query, select_after_rewrite
 from app.agents.nodes.route import policy_check, select_next_node
@@ -30,6 +31,7 @@ def build_agent_graph() -> CompiledStateGraph[
     builder.add_node("retrieve", retrieve)
     builder.add_node("grade_evidence", grade_evidence)
     builder.add_node("rewrite_query", rewrite_query)
+    builder.add_node("plan_multihop", plan_and_retrieve)
     builder.add_node("generate_stub", generation_stub)
     builder.add_node("insufficient_evidence", insufficient_evidence)
     builder.add_node("policy_blocked", policy_blocked)
@@ -52,6 +54,15 @@ def build_agent_graph() -> CompiledStateGraph[
         {
             "generate_stub": "generate_stub",
             "rewrite_query": "rewrite_query",
+            "plan_multihop": "plan_multihop",
+            "insufficient_evidence": "insufficient_evidence",
+        },
+    )
+    builder.add_conditional_edges(
+        "plan_multihop",
+        select_after_plan,
+        {
+            "grade_evidence": "grade_evidence",
             "insufficient_evidence": "insufficient_evidence",
         },
     )

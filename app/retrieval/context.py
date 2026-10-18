@@ -139,6 +139,80 @@ class ParentContextExpander:
         )
 
 
+class ContextPacker:
+    """Select diverse, high-scoring parent evidence within a strict token budget."""
+
+    def __init__(
+        self,
+        *,
+        token_budget: int = 1_200,
+        token_counter: TokenCounter | None = None,
+    ) -> None:
+        if token_budget < 1:
+            raise ValueError("token_budget must be positive")
+        self._token_budget = token_budget
+        self._token_counter = token_counter or RegexTokenCounter()
+
+    def pack(self, candidates: Sequence[ContextItem]) -> ExpandedContext:
+        items: list[ContextItem] = []
+        seen_chunks: set[tuple[str, int, str | None, str]] = set()
+        seen_content: set[str] = set()
+        remaining = self._token_budget
+        for candidate in _diversified(candidates):
+            child = candidate.child
+            chunk_key = (
+                child.document_id,
+                child.document_version,
+                child.index_version,
+                child.chunk_id,
+            )
+            content_key = _SPACE.sub(" ", candidate.content).strip().casefold()
+            if chunk_key in seen_chunks or not content_key or content_key in seen_content:
+                continue
+            original_tokens = self._token_counter.count(candidate.content)
+            if original_tokens < 1 or remaining < 1:
+                break
+            bounded = self._token_counter.truncate(candidate.content, remaining)
+            used_tokens = self._token_counter.count(bounded)
+            if not bounded or used_tokens < 1:
+                break
+            seen_chunks.add(chunk_key)
+            seen_content.add(content_key)
+            items.append(
+                ContextItem(
+                    child=child.model_copy(deep=True),
+                    content=bounded,
+                    used_parent=candidate.used_parent,
+                    truncated=candidate.truncated or used_tokens < original_tokens,
+                    token_count=used_tokens,
+                )
+            )
+            remaining -= used_tokens
+        return ExpandedContext(
+            items=items,
+            total_tokens=self._token_budget - remaining,
+            token_budget=self._token_budget,
+        )
+
+
+def _diversified(candidates: Sequence[ContextItem]) -> list[ContextItem]:
+    ranked = sorted(
+        enumerate(candidates),
+        key=lambda pair: (-(pair[1].child.score or 0.0), pair[0]),
+    )
+    first_by_source: list[ContextItem] = []
+    repeated_sources: list[ContextItem] = []
+    seen_sources: set[str] = set()
+    for _, candidate in ranked:
+        source = candidate.child.source_uri
+        if source in seen_sources:
+            repeated_sources.append(candidate)
+        else:
+            seen_sources.add(source)
+            first_by_source.append(candidate)
+    return [*first_by_source, *repeated_sources]
+
+
 def _validate_authorized_children(
     children: Sequence[RetrievedChunk], auth_filter: AuthFilter
 ) -> None:
