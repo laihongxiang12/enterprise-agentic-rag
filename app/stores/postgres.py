@@ -10,6 +10,7 @@ from pathlib import Path
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow, dict_row
 
+from app.core.security import audit_safe_details
 from app.schemas.documents import DocumentMeta, Principal
 from app.schemas.retrieval import AuthorizationScope, AuthorizedDocument
 from app.stores.models import AuditEvent, IngestJob
@@ -369,7 +370,7 @@ class PostgresMetadataStore:
                     event.resource_id,
                     event.outcome,
                     event.trace_id,
-                    json.dumps(event.details, ensure_ascii=False),
+                    json.dumps(audit_safe_details(event.details), ensure_ascii=False),
                 ),
             )
 

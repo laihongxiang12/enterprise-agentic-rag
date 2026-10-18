@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -10,6 +11,13 @@ from jwt import InvalidTokenError
 from app.core.config import Settings
 from app.core.dependencies import VerifiedIdentity, build_principal
 from app.schemas.documents import DocumentMeta, Principal
+from app.tools.policy import DEFAULT_TOOL_POLICY, ToolPolicy
+
+_MAX_AUTHORIZATION_LENGTH = 8_192
+_MAX_TOKEN_LENGTH = 8_000
+_MAX_CLAIM_ITEMS = 128
+_MAX_IDENTITY_LENGTH = 128
+_MAX_ATTRIBUTE_LENGTH = 256
 
 
 class AuthenticationError(ValueError):
@@ -43,6 +51,8 @@ class DevTokenService:
         return jwt.encode(payload, self._secret, algorithm="HS256")
 
     def verify(self, token: str) -> Principal:
+        if not isinstance(token, str) or not token or len(token) > _MAX_TOKEN_LENGTH:
+            raise AuthenticationError("invalid development bearer token")
         try:
             claims = jwt.decode(
                 token,
@@ -65,6 +75,8 @@ class DevTokenService:
     def verify_bearer(self, authorization: str | None) -> Principal:
         if authorization is None:
             raise AuthenticationError("bearer token is required")
+        if len(authorization) > _MAX_AUTHORIZATION_LENGTH:
+            raise AuthenticationError("authorization header is too long")
         scheme, separator, token = authorization.partition(" ")
         if separator != " " or scheme.lower() != "bearer" or not token.strip():
             raise AuthenticationError("authorization must use Bearer scheme")
@@ -73,6 +85,9 @@ class DevTokenService:
 
 class BasicPolicyEngine:
     """Fail-closed tenant, workspace, status, and group authorization rules."""
+
+    def __init__(self, tool_policy: ToolPolicy | None = None) -> None:
+        self._tool_policy = tool_policy or DEFAULT_TOOL_POLICY
 
     def authorize_read(
         self,
@@ -92,17 +107,40 @@ class BasicPolicyEngine:
         return bool(set(principal.group_ids).intersection(document.acl_groups))
 
     def authorize_tool(self, principal: Principal, tool_name: str) -> bool:
-        return f"tools:{tool_name}" in principal.scopes
+        return self._tool_policy.authorize(principal, tool_name)
+
+
+def audit_safe_details(_details: Mapping[str, object]) -> dict[str, object]:
+    """Drop free-form audit payloads so prompts, content, and keys cannot persist.
+
+    Stable event identifiers, event type/action, and outcome live in dedicated
+    audit columns. The JSON details column is deliberately kept empty.
+    """
+
+    return {}
 
 
 def _required_claim(claims: dict[str, object], name: str) -> str:
     value = claims.get(name)
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
         raise ValueError(f"claim {name} must be a non-empty string")
-    return value.strip()
+    return _safe_claim_value(value, name, max_length=_MAX_IDENTITY_LENGTH)
 
 
 def _string_tuple(value: object, name: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"claim {name} must be a string list")
-    return tuple(sorted({item.strip() for item in value if item.strip()}))
+    if len(value) > _MAX_CLAIM_ITEMS:
+        raise ValueError(f"claim {name} contains too many items")
+    return tuple(
+        sorted({_safe_claim_value(item, name, max_length=_MAX_ATTRIBUTE_LENGTH) for item in value})
+    )
+
+
+def _safe_claim_value(value: str, name: str, *, max_length: int) -> str:
+    normalized = value.strip()
+    if not normalized or len(normalized) > max_length:
+        raise ValueError(f"claim {name} has an invalid length")
+    if any(not character.isprintable() for character in normalized):
+        raise ValueError(f"claim {name} contains control characters")
+    return normalized

@@ -115,10 +115,19 @@ class CachedRetriever:
         cached = await self._cache.get(key.redis_key)
         if cached is not None:
             try:
-                return _CHUNK_LIST.validate_json(cached)
+                cached_chunks = _CHUNK_LIST.validate_json(cached)
+                if all(_chunk_matches_scope(chunk, auth_filter) for chunk in cached_chunks):
+                    return cached_chunks
             except ValidationError:
-                await self._cache.invalidate(key.redis_key)
+                pass
+            await self._cache.invalidate(key.redis_key)
         chunks = await self._retriever.aretrieve(query, auth_filter, top_k)
+        if any(not _chunk_matches_scope(chunk, auth_filter) for chunk in chunks):
+            raise AppError(
+                code="retrieval_scope_violation",
+                message="Retrieval returned evidence outside the authorization scope",
+                status_code=503,
+            )
         encoded = json.dumps(
             [chunk.model_dump(mode="json") for chunk in chunks],
             ensure_ascii=False,
@@ -126,6 +135,24 @@ class CachedRetriever:
         ).encode()
         await self._cache.set(key.redis_key, encoded, self._ttl_seconds)
         return chunks
+
+
+def _chunk_matches_scope(chunk: RetrievedChunk, auth_filter: AuthFilter) -> bool:
+    binding = (chunk.document_id, chunk.document_version, chunk.index_version)
+    visible = chunk.visibility == "tenant" or bool(
+        set(chunk.acl_groups).intersection(auth_filter.group_ids)
+    )
+    return bool(
+        auth_filter.allowed_document_ids
+        and auth_filter.allowed_index_versions
+        and auth_filter.allowed_document_versions
+        and chunk.tenant_id == auth_filter.tenant_id
+        and chunk.workspace_id == auth_filter.workspace_id
+        and chunk.document_id in auth_filter.allowed_document_ids
+        and chunk.index_version in auth_filter.allowed_index_versions
+        and binding in auth_filter.allowed_document_versions
+        and visible
+    )
 
 
 class AgentQueryApplicationService:
