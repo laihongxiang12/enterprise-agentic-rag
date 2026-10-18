@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115,<1",
+    "openai==3.35.0",
     "psycopg[binary]>=3.2,<4",
     "pymilvus==2.5.18",
     "pyjwt>=2.10,<3",

@@ -1,5 +1,6 @@
 """Application settings with explicit offline and real-mode boundaries."""
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal, Self
 
@@ -36,7 +37,17 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["deepseek", "openai_compatible"] = "deepseek"
     llm_base_url: str = "https://api.deepseek.com"
+    llm_model: str = Field(default="deepseek-flash", min_length=1)
     llm_api_key: SecretStr | None = None
+    llm_structured_output_mode: Literal["json_schema", "json_object"] = "json_schema"
+    llm_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    llm_max_attempts: int = Field(default=3, ge=1, le=5)
+    llm_max_concurrency: int = Field(default=4, ge=1, le=64)
+    llm_max_calls: int = Field(default=12, ge=1, le=10_000)
+    llm_max_total_tokens: int | None = Field(default=None, ge=1)
+    llm_max_output_tokens: int = Field(default=1_024, ge=1, le=131_072)
+    llm_input_price_per_million: Decimal | None = Field(default=None, ge=0)
+    llm_output_price_per_million: Decimal | None = Field(default=None, ge=0)
 
     database_url: SecretStr | None = None
     test_database_url: SecretStr | None = None
@@ -62,6 +73,10 @@ class Settings(BaseSettings):
             raise ValueError("RERANKER_CANDIDATE_LIMIT cannot be smaller than RERANKER_TOP_K")
         if self.app_mode == "real" and self.llm_api_key is None:
             raise ValueError("LLM_API_KEY is required when APP_MODE=real")
+        if (self.llm_input_price_per_million is None) != (
+            self.llm_output_price_per_million is None
+        ):
+            raise ValueError("both LLM token prices must be set together")
         if self.dev_auth_enabled:
             if self.app_env != "local" or self.app_mode == "real":
                 raise ValueError("DEV_AUTH_ENABLED is restricted to local non-real mode")
