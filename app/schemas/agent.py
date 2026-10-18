@@ -43,6 +43,25 @@ class MultiHopPlan(ContractModel):
         return stripped
 
 
+class AnswerCitationRef(ContractModel):
+    document_id: str = Field(min_length=1)
+    document_version: int = Field(ge=1)
+    chunk_id: str = Field(min_length=1)
+
+
+class GroundedAnswer(ContractModel):
+    answer: str = Field(min_length=1, max_length=20_000)
+    citations: list[AnswerCitationRef] = Field(min_length=1, max_length=8)
+
+    @field_validator("citations")
+    @classmethod
+    def validate_unique_citations(cls, values: list[AnswerCitationRef]) -> list[AnswerCitationRef]:
+        keys = [(value.document_id, value.document_version, value.chunk_id) for value in values]
+        if len(set(keys)) != len(keys):
+            raise ValueError("citations must be unique")
+        return values
+
+
 class AgentState(TypedDict, total=False):
     trace_id: str
     tenant_id: str
@@ -59,6 +78,8 @@ class AgentState(TypedDict, total=False):
     retrieved_chunks: list[dict[str, object]]
     evidence_coverage: dict[str, list[str]]
     context_tokens: int
+    draft_answer: dict[str, object]
+    citation_repair_count: int
     grade: dict[str, object]
     retry_count: int
     max_retries: int
@@ -94,6 +115,8 @@ def new_agent_state(
         retrieved_chunks=[],
         evidence_coverage={},
         context_tokens=0,
+        draft_answer={},
+        citation_repair_count=0,
         grade={},
         response={},
         error_codes=[],

@@ -40,6 +40,21 @@ def plan_payload(*queries: str) -> str:
     return json.dumps({"subqueries": list(queries), "reason": "multi-hop"})
 
 
+def grounded_answer_payload(item: RetrievedChunk) -> str:
+    return json.dumps(
+        {
+            "answer": f"{item.content} [1]",
+            "citations": [
+                {
+                    "document_id": item.document_id,
+                    "document_version": item.document_version,
+                    "chunk_id": item.chunk_id,
+                }
+            ],
+        }
+    )
+
+
 def chunk(
     chunk_id: str,
     content: str,
@@ -59,6 +74,7 @@ def chunk(
         content=content,
         title="Operations policy",
         source_uri=source_uri or f"memory://tenant-a/{document_id}",
+        acl_groups=["ops"],
         index_version="index-active",
         score=score,
     )
@@ -91,6 +107,7 @@ def context(
     retriever: Retriever,
     plans: Sequence[str],
     grades: Sequence[str],
+    answers: Sequence[str | Exception] = (),
     limits: AgentLimits | None = None,
     clock: FixedClock | None = None,
 ) -> tuple[AgentRuntimeContext, FakeLLM]:
@@ -99,6 +116,7 @@ def context(
             "RouteDecision": [route_payload()],
             "EvidenceGrade": grades,
             "MultiHopPlan": plans,
+            "GroundedAnswer": answers,
         }
     )
     return (
@@ -145,11 +163,14 @@ async def test_two_hop_plan_combines_evidence_and_reuses_trusted_filter() -> Non
         retriever=retriever,
         plans=[plan_payload(first, second)],
         grades=[grade_payload(action="decompose"), grade_payload(action="answer", sufficient=True)],
+        answers=[
+            grounded_answer_payload(chunk("report", "Report to security", document_id="reporting"))
+        ],
     )
 
     result = await run(runtime_context, query)
 
-    assert result["response"]["action"] == "generate"
+    assert result["response"]["action"] == "completed"
     assert result["subqueries"] == [first, second]
     assert result["retry_count"] == 1
     assert result["remaining_tool_calls"] == 5
@@ -174,11 +195,12 @@ async def test_four_subqueries_are_the_hard_fanout_limit() -> None:
         retriever=retriever,
         plans=[plan_payload(*subqueries)],
         grades=[grade_payload(action="decompose"), grade_payload(action="answer", sufficient=True)],
+        answers=[grounded_answer_payload(chunk("weak", "incomplete"))],
     )
 
     result = await run(runtime_context, query)
 
-    assert result["response"]["action"] == "generate"
+    assert result["response"]["action"] == "completed"
     assert len(result["subqueries"]) == 4
     assert len(retriever.calls) == 5
     assert result["remaining_tool_calls"] == 3
@@ -201,6 +223,7 @@ async def test_duplicate_hits_are_merged_once_with_coverage_preserved() -> None:
         retriever=retriever,
         plans=[plan_payload(first, second)],
         grades=[grade_payload(action="decompose"), grade_payload(action="answer", sufficient=True)],
+        answers=[grounded_answer_payload(shared)],
     )
 
     result = await run(runtime_context, query)

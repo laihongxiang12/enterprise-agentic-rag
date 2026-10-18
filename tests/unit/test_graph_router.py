@@ -29,6 +29,21 @@ def sufficient_grade_payload() -> str:
     )
 
 
+def grounded_answer_payload() -> str:
+    return json.dumps(
+        {
+            "answer": "员工年假为十天。[1]",
+            "citations": [
+                {
+                    "document_id": "leave-policy",
+                    "document_version": 1,
+                    "chunk_id": "leave-1",
+                }
+            ],
+        }
+    )
+
+
 def chunk() -> RetrievedChunk:
     return RetrievedChunk(
         tenant_id="tenant-a",
@@ -40,6 +55,7 @@ def chunk() -> RetrievedChunk:
         content="员工年假为十天。",
         title="年假制度",
         source_uri="memory://tenant-a/leave-policy",
+        acl_groups=["hr"],
         index_version="index-active",
     )
 
@@ -66,7 +82,10 @@ def context(
 ) -> tuple[AgentRuntimeContext, FakeLLM, FakeRetriever]:
     llm = FakeLLM(
         responses={query: response_override or route_payload(route, confidence=confidence)},
-        schema_scripts={"EvidenceGrade": [sufficient_grade_payload()]},
+        schema_scripts={
+            "EvidenceGrade": [sufficient_grade_payload()],
+            "GroundedAnswer": [grounded_answer_payload()],
+        },
     )
     retriever = FakeRetriever(responses={query: [chunk()]})
     runtime_context = AgentRuntimeContext(
@@ -112,9 +131,20 @@ async def test_knowledge_route_uses_exact_trusted_filter() -> None:
     result = await run_graph(runtime_context, query)
 
     assert result["response"] == {
-        "action": "generate",
-        "generation": "deferred_to_stage_14",
-        "evidence_count": 1,
+        "action": "completed",
+        "answer": "员工年假为十天。[1]",
+        "citations": [
+            {
+                "document_id": "leave-policy",
+                "document_version": 1,
+                "chunk_id": "leave-1",
+                "title": "年假制度",
+                "source_uri": "memory://tenant-a/leave-policy",
+                "snippet": "员工年假为十天。",
+                "page": None,
+            }
+        ],
+        "finish_reason": "completed",
     }
     assert result["retrieved_chunks"][0]["chunk_id"] == "leave-1"
     assert result["remaining_tool_calls"] == 7

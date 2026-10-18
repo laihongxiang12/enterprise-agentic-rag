@@ -41,6 +41,21 @@ def rewrite_payload(query: str) -> str:
     return json.dumps({"query": query, "reason": "add missing detail"})
 
 
+def grounded_answer_payload(chunk: RetrievedChunk) -> str:
+    return json.dumps(
+        {
+            "answer": f"{chunk.content} [1]",
+            "citations": [
+                {
+                    "document_id": chunk.document_id,
+                    "document_version": chunk.document_version,
+                    "chunk_id": chunk.chunk_id,
+                }
+            ],
+        }
+    )
+
+
 def evidence(
     chunk_id: str,
     content: str,
@@ -57,6 +72,7 @@ def evidence(
         content=content,
         title="Leave policy",
         source_uri=f"memory://{tenant_id}/leave-policy",
+        acl_groups=["hr"],
         index_version="index-active",
     )
 
@@ -92,11 +108,17 @@ def runtime_context(
     limits: AgentLimits | None = None,
     clock: SequenceClock | None = None,
 ) -> tuple[AgentRuntimeContext, FakeLLM, FakeRetriever]:
+    answer_scripts: list[str] = []
+    for chunks in reversed(list((responses or {}).values())):
+        if chunks:
+            answer_scripts = [grounded_answer_payload(chunks[-1])]
+            break
     llm = FakeLLM(
         schema_scripts={
             "RouteDecision": [route_payload()],
             "EvidenceGrade": grades,
             "QueryRewrite": rewrites,
+            "GroundedAnswer": answer_scripts,
         }
     )
     retriever = FakeRetriever(responses=responses, failures=failures)
@@ -140,7 +162,7 @@ async def test_sufficient_on_first_retrieval() -> None:
 
     result = await run(context, query)
 
-    assert result["response"]["action"] == "generate"
+    assert result["response"]["action"] == "completed"
     assert result["retry_count"] == 0
     assert len(retriever.calls) == 1
 
@@ -162,7 +184,7 @@ async def test_second_retrieval_succeeds_after_one_rewrite() -> None:
 
     result = await run(context, query)
 
-    assert result["response"]["action"] == "generate"
+    assert result["response"]["action"] == "completed"
     assert result["active_query"] == rewritten
     assert result["retry_count"] == 1
     assert result["remaining_tool_calls"] == 6

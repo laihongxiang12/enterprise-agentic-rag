@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     agent_max_subqueries: int = Field(default=4, ge=2, le=4)
     agent_subquery_concurrency: int = Field(default=2, ge=1, le=4)
     agent_planner_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    agent_generation_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    agent_generation_max_chars: int = Field(default=12_000, ge=512, le=100_000)
     sql_tool_enabled: bool = False
     web_tool_enabled: bool = False
 

@@ -65,6 +65,9 @@ def is_authorized_chunk(chunk: object, context: AgentRuntimeContext) -> bool:
     if not isinstance(chunk, RetrievedChunk):
         return False
     auth_filter = context.auth_filter
+    visible = chunk.visibility == "tenant" or bool(
+        set(chunk.acl_groups).intersection(auth_filter.group_ids)
+    )
     return bool(
         chunk.tenant_id == auth_filter.tenant_id
         and chunk.workspace_id == auth_filter.workspace_id
@@ -76,6 +79,7 @@ def is_authorized_chunk(chunk: object, context: AgentRuntimeContext) -> bool:
             chunk.index_version,
         )
         in auth_filter.allowed_document_versions
+        and visible
     )
 
 

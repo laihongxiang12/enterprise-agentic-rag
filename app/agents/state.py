@@ -33,6 +33,8 @@ class AgentLimits:
     subquery_concurrency: int = 2
     planner_timeout_seconds: float = 10.0
     context_token_budget: int = 1_200
+    generation_timeout_seconds: float = 20.0
+    generation_max_chars: int = 12_000
     sql_enabled: bool = False
     web_enabled: bool = False
 
@@ -52,6 +54,8 @@ class AgentLimits:
             self.subquery_concurrency,
             self.planner_timeout_seconds,
             self.context_token_budget,
+            self.generation_timeout_seconds,
+            self.generation_max_chars,
         )
         if any(value <= 0 for value in positive):
             raise ValueError("agent limits must be positive")
@@ -77,6 +81,8 @@ class AgentLimits:
             subquery_concurrency=settings.agent_subquery_concurrency,
             planner_timeout_seconds=settings.agent_planner_timeout_seconds,
             context_token_budget=settings.context_token_budget,
+            generation_timeout_seconds=settings.agent_generation_timeout_seconds,
+            generation_max_chars=settings.agent_generation_max_chars,
             sql_enabled=settings.sql_tool_enabled,
             web_enabled=settings.web_tool_enabled,
         )

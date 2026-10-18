@@ -12,7 +12,7 @@ from app.schemas.agent import AgentState, EvidenceGrade
 from app.schemas.retrieval import RetrievedChunk
 
 AfterGrade = Literal[
-    "generate_stub",
+    "generate_grounded",
     "rewrite_query",
     "plan_multihop",
     "insufficient_evidence",
@@ -142,7 +142,7 @@ def select_after_grade(state: AgentState) -> AfterGrade:
     except ValidationError:
         return "insufficient_evidence"
     if grade.relevant and grade.sufficient and grade.recommended_action == "answer":
-        return "generate_stub"
+        return "generate_grounded"
     can_retry = (
         grade.recommended_action == "rewrite"
         and state.get("retry_count", 0) < state.get("max_retries", 0)
@@ -158,16 +158,6 @@ def select_after_grade(state: AgentState) -> AfterGrade:
         and state.get("remaining_agent_rounds", 0) > 0
     )
     return "plan_multihop" if can_decompose else "insufficient_evidence"
-
-
-def generation_stub(state: AgentState) -> AgentState:
-    return AgentState(
-        response={
-            "action": "generate",
-            "generation": "deferred_to_stage_14",
-            "evidence_count": len(state.get("retrieved_chunks", [])),
-        }
-    )
 
 
 def insufficient_evidence(state: AgentState) -> AgentState:
