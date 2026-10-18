@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     test_database_url: SecretStr | None = None
     redis_url: SecretStr | None = None
+    test_redis_url: SecretStr | None = None
+    redis_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    retrieval_cache_ttl_seconds: int = Field(default=300, ge=1, le=86_400)
+    rate_limit_requests: int = Field(default=30, ge=1, le=10_000)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
+    query_max_concurrency: int = Field(default=8, ge=1, le=256)
+    query_concurrency_wait_seconds: float = Field(default=0.1, gt=0, le=30)
+    checkpoint_ttl_minutes: int = Field(default=60, ge=1, le=43_200)
     milvus_uri: str | None = None
     test_milvus_uri: str | None = None
     milvus_collection: str = "enterprise_rag_hybrid_chunks"

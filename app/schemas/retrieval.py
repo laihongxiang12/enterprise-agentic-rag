@@ -29,6 +29,7 @@ class AuthFilter(ContractModel):
     allowed_document_ids: frozenset[str] = Field(default_factory=frozenset)
     allowed_index_versions: frozenset[str] = Field(default_factory=frozenset)
     allowed_document_versions: frozenset[tuple[str, int, str]] = Field(default_factory=frozenset)
+    allowed_acl_versions: frozenset[tuple[str, int]] = Field(default_factory=frozenset)
 
 
 class AuthorizedDocument(ContractModel):
@@ -62,6 +63,9 @@ class AuthorizationScope(ContractModel):
             allowed_document_versions=frozenset(
                 (item.document_id, item.document_version, item.index_version)
                 for item in self.documents
+            ),
+            allowed_acl_versions=frozenset(
+                (item.document_id, item.acl_version) for item in self.documents
             ),
         )
 

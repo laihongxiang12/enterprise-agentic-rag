@@ -2,15 +2,27 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from typing import Literal, Protocol, cast
+
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from pydantic import TypeAdapter, ValidationError
 
 from app.agents.graph import build_agent_graph
 from app.agents.state import AgentRuntimeContext, build_initial_state
 from app.core.errors import AppError
+from app.retrieval.base import Retriever
 from app.schemas.agent import AgentState
 from app.schemas.api import Citation, QueryRequest, QueryResponse, Usage
 from app.schemas.documents import Principal
+from app.schemas.retrieval import AuthFilter, RetrievedChunk
+from app.stores.base import CacheStore
+from app.stores.checkpoint import checkpoint_config
+from app.stores.redis import RetrievalCacheKey
+
+_CHUNK_LIST = TypeAdapter(list[RetrievedChunk])
 
 
 class RuntimeContextFactory(Protocol):
@@ -20,6 +32,19 @@ class RuntimeContextFactory(Protocol):
 
 
 class QueryService:
+    def __init__(
+        self,
+        *,
+        checkpointer: BaseCheckpointSaver[str] | None = None,
+        max_concurrency: int = 8,
+        concurrency_wait_seconds: float = 0.1,
+    ) -> None:
+        if max_concurrency < 1 or concurrency_wait_seconds <= 0:
+            raise ValueError("query concurrency settings must be positive")
+        self._graph = build_agent_graph(checkpointer)
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+        self._concurrency_wait_seconds = concurrency_wait_seconds
+
     async def execute(
         self,
         request: QueryRequest,
@@ -34,8 +59,73 @@ class QueryService:
             query=request.query,
             max_retries=request.max_retries,
         )
-        result = await build_agent_graph().ainvoke(state, context=context)
-        return cast(AgentState, result)
+        if request.session_id is not None:
+            state["session_id"] = request.session_id
+        config = checkpoint_config(
+            context.principal,
+            workspace_id=context.auth_filter.workspace_id,
+            session_id=request.session_id or trace_id,
+        )
+        try:
+            async with asyncio.timeout(self._concurrency_wait_seconds):
+                await self._semaphore.acquire()
+        except TimeoutError as exc:
+            raise AppError(
+                code="query_concurrency_exceeded",
+                message="Too many queries are running concurrently",
+                status_code=429,
+            ) from exc
+        try:
+            result = await self._graph.ainvoke(state, config=config, context=context)
+            return cast(AgentState, result)
+        finally:
+            self._semaphore.release()
+
+
+class CachedRetriever:
+    """Cache only authorized retrieval chunks; generated answers are never cached."""
+
+    def __init__(
+        self,
+        retriever: Retriever,
+        cache: CacheStore,
+        *,
+        ttl_seconds: int,
+        config_hash: str,
+    ) -> None:
+        if ttl_seconds < 1 or not config_hash.strip():
+            raise ValueError("cache TTL and config_hash must be configured")
+        self._retriever = retriever
+        self._cache = cache
+        self._ttl_seconds = ttl_seconds
+        self._config_hash = config_hash
+
+    async def aretrieve(
+        self,
+        query: str,
+        auth_filter: AuthFilter,
+        top_k: int,
+    ) -> list[RetrievedChunk]:
+        key = RetrievalCacheKey.from_request(
+            auth_filter,
+            query,
+            config_hash=self._config_hash,
+            top_k=top_k,
+        )
+        cached = await self._cache.get(key.redis_key)
+        if cached is not None:
+            try:
+                return _CHUNK_LIST.validate_json(cached)
+            except ValidationError:
+                await self._cache.invalidate(key.redis_key)
+        chunks = await self._retriever.aretrieve(query, auth_filter, top_k)
+        encoded = json.dumps(
+            [chunk.model_dump(mode="json") for chunk in chunks],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+        await self._cache.set(key.redis_key, encoded, self._ttl_seconds)
+        return chunks
 
 
 class AgentQueryApplicationService:

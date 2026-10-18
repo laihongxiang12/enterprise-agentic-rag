@@ -122,6 +122,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "langgraph" },
+    { name = "langgraph-checkpoint-redis" },
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -130,6 +131,7 @@ dependencies = [
     { name = "pymilvus" },
     { name = "pypdf" },
     { name = "python-multipart" },
+    { name = "redis" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -149,6 +151,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28,<1" },
     { name = "langgraph", specifier = "==1.2.16" },
+    { name = "langgraph-checkpoint-redis", specifier = "==0.5.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.14,<2" },
     { name = "openai", specifier = "==3.35.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
@@ -160,6 +163,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3,<10" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.25,<2" },
     { name = "python-multipart", specifier = ">=0.0.20,<1" },
+    { name = "redis", specifier = ">=6.4,<7" },
     { name = "reportlab", marker = "extra == 'dev'", specifier = ">=4.4,<5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9,<1" },
     { name = "types-reportlab", marker = "extra == 'dev'", specifier = ">=4.4,<5" },
@@ -376,6 +380,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonpath-ng"
+version = "1.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/2d/ebcea1c9a2338a08a5f6107bd274bd4b1e0c9a2ebc82ddbc815271ffee3b/jsonpath_ng-1.11.0.tar.gz", hash = "sha256:938b9c8d02f625c079c884f2b76241d0ac54ee7d1c8f10a502c42d8e31ff0c4b", size = 94460, upload-time = "2026-10-16T20:11:02.037Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c6/28/7bf49fd8ef55167239820e05e7bb501e0cc4cb20075c9e4da377e1616761/jsonpath_ng-1.11.0-py3-none-any.whl", hash = "sha256:84b325f791e43ae40810ff4059f50744b4c22fe53066b0884a659f0191c0b308", size = 76222, upload-time = "2026-10-16T20:11:00.574Z" },
+]
+
+[[package]]
 name = "jsonpointer"
 version = "3.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -445,6 +458,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0f/69/31fdbdc65a85bbd6178afa193c772bb926620f47b4869638bc2bc80afaaa/langgraph_checkpoint-4.3.0.tar.gz", hash = "sha256:c75965d84cc2c1d549163e910a15bcb577758001b141619d05297c463280b018", size = 182652, upload-time = "2026-10-12T22:26:31.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1f/0c/84747e340bf4f29291c84cdd5733fc8d0a822f3d33bb24e664a18afa4a7c/langgraph_checkpoint-4.3.0-py3-none-any.whl", hash = "sha256:bedfafe2f997ded60e4fa593e79f56f436a6e45586392dc382aa810d0c751c64", size = 58063, upload-time = "2026-10-12T22:26:30.429Z" },
+]
+
+[[package]]
+name = "langgraph-checkpoint-redis"
+version = "0.5.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langgraph-checkpoint" },
+    { name = "orjson" },
+    { name = "redis" },
+    { name = "redisvl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/40/8eb4cc6d4aeda603783e8abc7695c0791ffcea52dacc2b58b063f02ceb18/langgraph_checkpoint_redis-0.5.2.tar.gz", hash = "sha256:be67fd850b0799e99b10d2c3a2be2b0bda35c45ad0269e1414da30d9a9f97752", size = 120928, upload-time = "2026-08-20T09:05:20.183Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/83/4c/4b9524c4f451760765be72bac67c45bc3be25dfd126184fa101dffee1c33/langgraph_checkpoint_redis-0.5.2-py3-none-any.whl", hash = "sha256:9347b8806065377fdb72ab3fd94bae97b5c62d092807c0e3633796195a0d333a", size = 132614, upload-time = "2026-08-20T09:05:18.892Z" },
 ]
 
 [[package]]
@@ -537,6 +565,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/47/e2/ac0c50e571661b1fc4d6ad075a3961f51f9c578a078e132b277eb25324e3/milvus_lite-3.2.2.tar.gz", hash = "sha256:c171dd372071d06425b478975562c5a1c13178333a74883eb04e8a8e6fca1d28", size = 765527, upload-time = "2026-10-13T08:38:34.584Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/45/a1/369dc72338c9fe96a21199281ddf29d3797dba5c582f25db59ff9d2df300/milvus_lite-3.2.2-py3-none-any.whl", hash = "sha256:106e2437054713afa31208cd081f1e2682253213949a5f544d983dfce1b3a16d", size = 276845, upload-time = "2026-10-13T08:38:30.657Z" },
+]
+
+[[package]]
+name = "ml-dtypes"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/12/72/307d7c4bd0600601c7133fba5cb78af7db968152951c1cd473abb1cda782/ml_dtypes-0.6.0.tar.gz", hash = "sha256:5e60251d32ced5598972e4d5e06a2f044341f9291402551a3f6f0ec44f9299b0", size = 3032327, upload-time = "2026-08-13T14:14:40.215Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/84/6a/441eb053b078954f7fea284dfb288701884d0a1404d39babb858e1649023/ml_dtypes-0.6.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:5359c588cc62de6f78d7430f06b65853d884955494d86d6ad90b6dd64a3f3a08", size = 565447, upload-time = "2026-08-13T14:14:01.737Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/cf/87e8a6c57eed63a91782a0d229856ddf73e138ce004dd71e2799a9dcdb33/ml_dtypes-0.6.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:37da32aa97749251025666d62372775019594577b9c9e9cfda83bed48d778fdb", size = 360227, upload-time = "2026-08-13T14:14:02.938Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/f9/7d76c1eae866f5d4636401b31b6d6dd90e4b4ced1fa7cfdfcca9c60e4bd3/ml_dtypes-0.6.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3b4a480aa8fd54a1805b8ac10f3f91763926a74f73c0c364c10f9231854f4170", size = 409890, upload-time = "2026-08-13T14:14:04.248Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/db/9c61ec2760b5cbfb1c6558d5c991a6d8fd3271053c32db20506a9a90272b/ml_dtypes-0.6.0-cp312-cp312-win_amd64.whl", hash = "sha256:2a3e9d53925597fbffafd2a37048dadeddd0bdaba58058f6ae0869ed709a184d", size = 439333, upload-time = "2026-08-13T14:14:05.501Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/57/780ca3e5ab135b9fbdd8e5441abf5f801b30398371b691291e05ab9834c0/ml_dtypes-0.6.0-cp312-cp312-win_arm64.whl", hash = "sha256:6eaed129a4afe90694b8685e2f9b6294849f5eda4af9a15be83a4326eeebd775", size = 552268, upload-time = "2026-08-13T14:14:06.866Z" },
 ]
 
 [[package]]
@@ -953,6 +997,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-ulid"
+version = "4.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/41/65079023c81491a21799c0120bce5925366b6913596bf797806f19973290/python_ulid-4.0.1.tar.gz", hash = "sha256:bbeec02556190bb9dc3401faa7268696acbfbe7b6db9908c155dc3548629f20c", size = 101683, upload-time = "2026-07-20T15:21:41.256Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/15/8b39b36f55b6618ec4ca9b55134dcfd9c04cecbc72709f5d8e6bdebed9cd/python_ulid-4.0.1-py3-none-any.whl", hash = "sha256:6f1d69ceb97e99fe542df8476ebcd7a668284bf53ee14b3106bcc6a341a95ed9", size = 14609, upload-time = "2026-07-20T15:21:40.214Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -968,6 +1021,34 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/74/93/7baea19427dcfbe1e5a372d81473250b379f04b1bd3c4c5ff825e2327202/pyyaml-6.0.3-cp312-cp312-win32.whl", hash = "sha256:96b533f0e99f6579b3d4d4995707cf36df9100d67e0c8303a0c55b27b5f99bc5", size = 137658, upload-time = "2025-09-25T21:32:20.209Z" },
     { url = "https://files.pythonhosted.org/packages/86/bf/899e81e4cce32febab4fb42bb97dcdf66bc135272882d1987881a4b519e9/pyyaml-6.0.3-cp312-cp312-win_amd64.whl", hash = "sha256:5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b", size = 154003, upload-time = "2025-09-25T21:32:21.167Z" },
     { url = "https://files.pythonhosted.org/packages/1a/08/67bd04656199bbb51dbed1439b7f27601dfb576fb864099c7ef0c3e55531/pyyaml-6.0.3-cp312-cp312-win_arm64.whl", hash = "sha256:64386e5e707d03a7e172c0701abfb7e10f0fb753ee1d773128192742712a98fd", size = 140344, upload-time = "2025-09-25T21:32:22.617Z" },
+]
+
+[[package]]
+name = "redis"
+version = "6.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/d6/e8b92798a5bd67d659d51a18170e91c16ac3b59738d91894651ee255ed49/redis-6.4.0.tar.gz", hash = "sha256:b01bc7282b8444e28ec36b261df5375183bb47a07eb9c603f284e89cbc5ef010", size = 4647399, upload-time = "2025-08-07T08:10:11.441Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/02/89e2ed7e85db6c93dfa9e8f691c5087df4e3551ab39081a4d7c6d1f90e05/redis-6.4.0-py3-none-any.whl", hash = "sha256:f0544fa9604264e9464cdf4814e7d4830f74b165d52f2a330a760a88dd248b7f", size = 279847, upload-time = "2025-08-07T08:10:09.84Z" },
+]
+
+[[package]]
+name = "redisvl"
+version = "0.28.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonpath-ng" },
+    { name = "ml-dtypes" },
+    { name = "numpy" },
+    { name = "pydantic" },
+    { name = "python-ulid" },
+    { name = "pyyaml" },
+    { name = "redis" },
+    { name = "tenacity" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ad/f2/b13b84bb79be86dcd4812152d892d634228be4affa3c9315b58f262c2261/redisvl-0.28.0.tar.gz", hash = "sha256:851a9528ffefc547263e50db90e5bf9efaeb9f5c91771073705827f294ab02c0", size = 1388567, upload-time = "2026-10-09T13:35:34.033Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/5c/79d31615c7ffa512825d7bcfe63e42052f815871692f9f1e3bd0fa1c92c7/redisvl-0.28.0-py3-none-any.whl", hash = "sha256:0f013853a54219651355ec3a6c5a3d2c5cdf02935ffc0aa27c9cb80e2023d306", size = 435177, upload-time = "2026-10-09T13:35:32.122Z" },
 ]
 
 [[package]]

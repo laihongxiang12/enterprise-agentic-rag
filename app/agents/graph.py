@@ -1,5 +1,6 @@
 """Bounded route, retrieval, evidence grading, and rewrite graph."""
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -19,7 +20,9 @@ from app.agents.state import AgentRuntimeContext
 from app.schemas.agent import AgentState
 
 
-def build_agent_graph() -> CompiledStateGraph[
+def build_agent_graph(
+    checkpointer: BaseCheckpointSaver[str] | None = None,
+) -> CompiledStateGraph[
     AgentState,
     AgentRuntimeContext,
     AgentState,
@@ -95,4 +98,7 @@ def build_agent_graph() -> CompiledStateGraph[
     builder.add_edge("direct", END)
     builder.add_edge("insufficient_evidence", END)
     builder.add_edge("policy_blocked", END)
-    return builder.compile(name="enterprise-agent-retrieval-loop")
+    return builder.compile(
+        checkpointer=checkpointer,
+        name="enterprise-agent-retrieval-loop",
+    )

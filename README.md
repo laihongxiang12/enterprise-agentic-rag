@@ -87,6 +87,17 @@ Milvus 仅绑定 `127.0.0.1:19530`；etcd、MinIO 和 9091 端口不暴露到宿
 
 阶段 08 的默认 collection 是 `enterprise_rag_hybrid_chunks`。Stage 07 的 `enterprise_rag_chunks` 不会被自动删除；Milvus 无法原地补加 BM25 function，因此真实数据需要重新 ingestion 后再切换。混合检索默认 dense top 30、lexical top 30、RRF `k=60`、融合 top 20，可通过 `RETRIEVAL_*` 环境变量配置。
 
+## Redis cache、限流与 checkpoint
+
+本地 Redis 8.6.7 只绑定 `127.0.0.1:6380`，避免覆盖机器上已有的 6379 服务。Redis 8 自带官方 LangGraph saver 所需的 Search/JSON 能力：
+
+```bash
+docker compose up -d --wait redis
+uv run pytest tests/integration/test_checkpoint.py -m integration -q
+```
+
+retrieval cache 只保存已授权 chunk，不保存生成答案；key 包含 tenant、workspace、权限 hash、index/ACL 版本、query、top-k 与检索配置 hash。checkpoint thread key 绑定验证后的 Principal、workspace、session、groups 和 scopes，不能用客户端裸 `session_id` 跨租户恢复。官方 Redis Search checkpoint 只支持逻辑数据库 0，因此测试也使用 `/0` 并依赖严格前缀隔离。详细决策见 [`docs/adr/003-redis-checkpoint.md`](docs/adr/003-redis-checkpoint.md)。
+
 ## Rerank、Parent Context 与引用
 
 阶段 09 默认把融合 top20 rerank 到 top8，模型调用超时或失败时保留原融合顺序并显式标记降级。`LocalCrossEncoderReranker` 只接收注入的本地同步模型并在线程中批量评分；项目不会在导入或测试时自动下载模型。离线测试使用确定性的 `FakeReranker`。
