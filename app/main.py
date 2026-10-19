@@ -2,11 +2,13 @@
 
 import ipaddress
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.api.dependencies import ApiServices
@@ -110,6 +112,9 @@ def create_app(
 
     application.include_router(documents_router)
     application.include_router(query_router)
+    static_directory = Path(__file__).with_name("static")
+    if static_directory.is_dir():
+        application.mount("/", StaticFiles(directory=static_directory, html=True), name="demo")
     return application
 
 
@@ -138,4 +143,15 @@ def _metrics_access_allowed(request: Request, application: FastAPI) -> bool:
     return "metrics:read" in principal.scopes
 
 
-app = create_app()
+def create_runtime_app() -> FastAPI:
+    """Assemble only the explicitly selected runtime; real mode never falls back."""
+    settings = get_settings()
+    services = None
+    if settings.app_mode == "fake" and settings.app_env == "local":
+        from app.demo import build_demo_services
+
+        services = build_demo_services(settings)
+    return create_app(settings, api_services=services)
+
+
+app = create_runtime_app()

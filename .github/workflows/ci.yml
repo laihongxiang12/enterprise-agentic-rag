@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+      - run: uv sync --extra dev --locked
+      - run: uv run ruff check .
+      - run: uv run mypy app evals scripts
+      - run: uv run pytest tests/unit tests/security tests/regression -q
+      - run: uv run python -m evals.run_eval --profile small
+      - name: Offline API seed and smoke
+        shell: bash
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log &
+          api_pid=$!
+          trap 'kill "$api_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health/live >/dev/null; then break; fi
+            sleep 1
+          done
+          uv run python -m scripts.seed_demo
+          uv run python -m scripts.smoke
+
+  real-milvus-integration:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      POSTGRES_USER: enterprise_rag_ci
+      POSTGRES_PASSWORD: ci-only-not-a-production-secret
+      POSTGRES_DB: enterprise_rag_ci
+      MINIO_ROOT_USER: minio-ci
+      MINIO_ROOT_PASSWORD: minio-ci-only-not-a-production-secret
+      TEST_MILVUS_URI: http://127.0.0.1:19530
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+      - run: uv sync --extra dev --locked
+      - run: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.integration.yml up -d --wait milvus
+      - run: uv run pytest tests/integration/test_milvus.py tests/integration/test_milvus_hybrid.py -q
+      - if: always()
+        run: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.integration.yml down

@@ -2,7 +2,40 @@
 
 这是 `all-in-rag` 工作树中的增量产品子项目。旧 `code/`、`data/`、`docs/`、`models/` 和原虚拟环境继续作为 baseline；新服务从本目录独立安装、测试和运行。
 
-当前实现包含 FastAPI 文档/查询接口、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL、Milvus Dense + 原生 BM25 + RRF 混合检索、受限 Rerank、LangGraph 有界检索图、Grounded Answer 与引用验证。Redis durable checkpoint、生产身份提供方、生产任务队列和部署组合仍属于后续阶段，不能把离线 API 测试解释为生产部署已完成。
+当前实现包含 FastAPI 文档/查询接口、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL、Milvus Dense + 原生 BM25 + RRF 混合检索、受限 Rerank、LangGraph 有界检索图、Grounded Answer 与引用验证、Redis cache/checkpoint、可观测性、离线评测以及可构建的 Compose Demo。生产身份提供方和生产任务队列仍需部署方接入，不能把 Fake Demo 解释为生产环境。
+
+## Fake Quickstart（不调用 DeepSeek）
+
+完整 Demo 使用非 root API 镜像，并启动 PostgreSQL、Redis、Milvus、etcd 与 MinIO。先创建仅用于本机的 Compose 环境文件并替换占位值：
+
+```bash
+cp deploy/.env.compose.example deploy/.env.compose
+docker compose --env-file deploy/.env.compose -f deploy/docker-compose.yml up -d --build --wait
+uv run python -m scripts.seed_demo
+uv run python -m scripts.smoke
+```
+
+浏览器打开 `http://127.0.0.1:8000/`。Fake Demo token 是 `demo-local-token`，只用于 `APP_ENV=local`、`APP_MODE=fake` 的原创虚构数据演示；它不是生产认证。页面展示答案、citations、trace_id、重试次数和完成状态。
+
+停止容器但保留数据卷：
+
+```bash
+docker compose --env-file deploy/.env.compose -f deploy/docker-compose.yml stop
+```
+
+不要随意执行 `down -v`，该命令会删除 PostgreSQL、Redis、Milvus、etcd 与 MinIO 的命名卷。
+
+资源上限写在 `deploy/docker-compose.yml`：API 768 MiB、PostgreSQL 512 MiB、Redis 256 MiB、etcd/MinIO 各 512 MiB、Milvus 4 GiB。宿主端口仅将 API 的 8000 映射到 WSL 本机的 `127.0.0.1`，后端服务留在 Compose 网络内。在 VS Code 的 WSL 窗口中，可通过 **Ports** 面板转发 8000 后从 Windows 浏览器访问；不要为了方便把固定 token Demo 暴露到公网或局域网。
+
+## Real Backend 与真实付费模型
+
+Compose Quickstart 故意运行 Fake QueryService，但仍真实启动后端容器并进行健康检查。真实 PostgreSQL/Milvus/Redis adapter 的集成测试使用本页后续章节中的 `TEST_*` 变量单独验证，不会被 Fake 替代。CI 的手动 Milvus job 额外合并 `deploy/docker-compose.integration.yml`，只为测试发布 `127.0.0.1:19530`；日常 Demo 不发布后端端口。
+
+DeepSeek 只在显式 `APP_MODE=real`、配置 `LLM_API_KEY`、装配真实 QueryService 且操作者确认费用后调用。仓库、镜像、Compose 和 CI 均不包含密钥，CI 默认绝不调用付费模型；阶段 19 的离线指标不能当作 DeepSeek 效果。
+
+## CI
+
+`.github/workflows/ci.yml` 默认运行锁文件检查所依赖的安装、Ruff、mypy、unit/security/regression，以及真实启动的离线 API seed+smoke。Milvus 真实集成是独立的手动 job，会启动官方 Milvus stack 并运行两项真实测试；它不会以 memory fake 代替向量库。
 
 ## WSL 快速开始
 

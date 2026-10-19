@@ -1,0 +1,4 @@
+services:
+  milvus:
+    ports:
+      - "127.0.0.1:19530:19530"

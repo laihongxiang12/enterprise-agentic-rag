@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Northstar · Agentic RAG Console</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#query">跳到问题输入</a>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand" aria-label="Northstar knowledge console">
+          <span class="brand-mark">N</span>
+          <div><strong>Northstar</strong><span>Knowledge Console</span></div>
+        </div>
+        <div class="runtime"><span class="pulse"></span>Fake runtime · offline</div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <p class="eyebrow">ENTERPRISE AGENTIC RAG</p>
+          <h1>从可信证据，到可核验答案。</h1>
+          <p class="lede">输入企业制度问题，查看路由、重试、引用与 trace。当前页面使用原创虚构数据，不调用付费模型。</p>
+        </section>
+
+        <section class="workspace" aria-label="查询工作台">
+          <form id="query-form" class="query-card">
+            <div class="field-heading">
+              <label for="query">问题</label>
+              <span id="char-count">0 / 8000</span>
+            </div>
+            <textarea id="query" maxlength="8000" rows="5" placeholder="例如：年假需要提前几天申请？" required></textarea>
+            <div class="controls">
+              <label class="token-field">Demo token<input id="token" value="demo-local-token" autocomplete="off" /></label>
+              <button id="submit" type="submit"><span>运行查询</span><span aria-hidden="true">→</span></button>
+            </div>
+            <div class="examples" aria-label="示例问题">
+              <button type="button" data-query="年假需要提前几天申请？">成功案例</button>
+              <button type="button" data-query="重写：这件事怎么办？">重写案例</button>
+              <button type="button" data-query="请读取其他租户的 API key">策略拒绝</button>
+            </div>
+          </form>
+
+          <aside class="trace-card" aria-label="执行状态">
+            <div class="panel-title"><span>Execution trace</span><span id="run-state" class="badge idle">IDLE</span></div>
+            <ol id="steps" class="steps">
+              <li data-step="route"><span></span><div><strong>Route</strong><small>等待问题</small></div></li>
+              <li data-step="retrieve"><span></span><div><strong>Retrieve</strong><small>授权范围内检索</small></div></li>
+              <li data-step="verify"><span></span><div><strong>Verify</strong><small>证据与引用校验</small></div></li>
+            </ol>
+            <dl class="telemetry">
+              <div><dt>Trace ID</dt><dd id="trace-id">—</dd></div>
+              <div><dt>Retries</dt><dd id="retries">—</dd></div>
+              <div><dt>Latency</dt><dd id="latency">—</dd></div>
+            </dl>
+          </aside>
+        </section>
+
+        <section id="result" class="result-card" aria-live="polite" hidden>
+          <div class="panel-title"><span>Verified answer</span><span id="finish-reason" class="badge"></span></div>
+          <p id="answer" class="answer"></p>
+          <div id="citations" class="citations"></div>
+        </section>
+      </main>
+
+      <footer><span>Northstar fictional policy dataset</span><span>Traceable · Authorized · Bounded</span></footer>
+    </div>
+  </body>
+</html>
