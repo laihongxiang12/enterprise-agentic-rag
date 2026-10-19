@@ -9,6 +9,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.observability import Observability, get_observability
+from app.observability.instrumentation import ObservedReranker
 from app.retrieval.base import Reranker
 from app.schemas.retrieval import AuthFilter, RetrievedChunk
 
@@ -84,6 +86,7 @@ class RerankService:
         candidate_limit: int = 20,
         output_top_k: int = 8,
         timeout_seconds: float = 2.0,
+        observability: Observability | None = None,
     ) -> None:
         if candidate_limit < output_top_k:
             raise ValueError("candidate_limit cannot be smaller than output_top_k")
@@ -91,7 +94,10 @@ class RerankService:
             raise ValueError("output_top_k must be between 5 and 8")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        self._reranker = reranker
+        self._reranker = ObservedReranker(
+            reranker,
+            observability or get_observability(),
+        )
         self._candidate_limit = candidate_limit
         self._output_top_k = output_top_k
         self._timeout_seconds = timeout_seconds

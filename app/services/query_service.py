@@ -13,6 +13,7 @@ from pydantic import TypeAdapter, ValidationError
 from app.agents.graph import build_agent_graph
 from app.agents.state import AgentRuntimeContext, build_initial_state
 from app.core.errors import AppError
+from app.observability.instrumentation import instrument_runtime_context
 from app.retrieval.base import Retriever
 from app.schemas.agent import AgentState
 from app.schemas.api import Citation, QueryRequest, QueryResponse, Usage
@@ -53,33 +54,52 @@ class QueryService:
         trace_id: str,
     ) -> AgentState:
         """Run one query with identity and authorization from trusted context only."""
-        state = build_initial_state(
-            context,
-            trace_id=trace_id,
-            query=request.query,
-            max_retries=request.max_retries,
-        )
-        if request.session_id is not None:
-            state["session_id"] = request.session_id
-        config = checkpoint_config(
-            context.principal,
-            workspace_id=context.auth_filter.workspace_id,
-            session_id=request.session_id or trace_id,
-        )
-        try:
-            async with asyncio.timeout(self._concurrency_wait_seconds):
-                await self._semaphore.acquire()
-        except TimeoutError as exc:
-            raise AppError(
-                code="query_concurrency_exceeded",
-                message="Too many queries are running concurrently",
-                status_code=429,
-            ) from exc
-        try:
-            result = await self._graph.ainvoke(state, config=config, context=context)
-            return cast(AgentState, result)
-        finally:
-            self._semaphore.release()
+        instrumented = instrument_runtime_context(context)
+        observability = instrumented.observability
+        with (
+            observability.trace_scope(trace_id),
+            observability.observe(
+                component="service", operation="query", trace_id=trace_id
+            ) as observed,
+        ):
+            state = build_initial_state(
+                instrumented,
+                trace_id=trace_id,
+                query=request.query,
+                max_retries=request.max_retries,
+            )
+            if request.session_id is not None:
+                state["session_id"] = request.session_id
+            config = checkpoint_config(
+                instrumented.principal,
+                workspace_id=instrumented.auth_filter.workspace_id,
+                session_id=request.session_id or trace_id,
+            )
+            try:
+                async with asyncio.timeout(self._concurrency_wait_seconds):
+                    await self._semaphore.acquire()
+            except TimeoutError as exc:
+                raise AppError(
+                    code="query_concurrency_exceeded",
+                    message="Too many queries are running concurrently",
+                    status_code=429,
+                ) from exc
+            try:
+                result = await self._graph.ainvoke(state, config=config, context=instrumented)
+                completed = cast(AgentState, result)
+                usage = observability.current_usage()
+                completed["usage"] = usage.model_dump(mode="json")
+                retry_count = completed.get("retry_count", 0)
+                observability.metrics.record_retries("agent", retry_count)
+                observed.set_attribute("retry.count", retry_count)
+                observed.set_log_field("retry_count", retry_count)
+                route = completed.get("route")
+                if route:
+                    observed.set_attribute("route", route)
+                    observed.set_log_field("route", route)
+                return completed
+            finally:
+                self._semaphore.release()
 
 
 class CachedRetriever:
@@ -210,7 +230,7 @@ class AgentQueryApplicationService:
             trace_id=trace_id,
             answer=answer,
             citations=citations,
-            usage=Usage(),
+            usage=Usage.model_validate(state.get("usage", {})),
             latency_ms=latency_ms,
             retries=state.get("retry_count", 0),
             finish_reason=finish_reason,

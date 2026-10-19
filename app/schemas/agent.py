@@ -88,6 +88,7 @@ class AgentState(TypedDict, total=False):
     deadline_epoch_ms: int
     response: dict[str, object]
     error_codes: list[str]
+    usage: dict[str, object]
 
 
 def new_agent_state(
@@ -120,6 +121,7 @@ def new_agent_state(
         grade={},
         response={},
         error_codes=[],
+        usage={},
         retry_count=0,
         max_retries=max_retries,
         remaining_tool_calls=remaining_tool_calls,

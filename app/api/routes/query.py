@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from typing import Annotated
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import ApiServices, get_api_services, get_principal
+from app.api.dependencies import ApiServices, get_api_services, get_principal, get_trace_id
 from app.core.errors import AppError
 from app.schemas.api import QueryRequest, QueryResponse
 from app.schemas.documents import Principal
@@ -23,9 +22,10 @@ async def query(
     request: QueryRequest,
     principal: Annotated[Principal, Depends(get_principal)],
     services: Annotated[ApiServices, Depends(get_api_services)],
+    trace_id: Annotated[str, Depends(get_trace_id)],
 ) -> QueryResponse:
     await services.limiter.check(principal, "query")
-    return await services.queries.query(request, principal, trace_id=str(uuid4()))
+    return await services.queries.query(request, principal, trace_id=trace_id)
 
 
 @router.post("/stream")
@@ -33,9 +33,9 @@ async def query_stream(
     request: QueryRequest,
     principal: Annotated[Principal, Depends(get_principal)],
     services: Annotated[ApiServices, Depends(get_api_services)],
+    trace_id: Annotated[str, Depends(get_trace_id)],
 ) -> StreamingResponse:
     await services.limiter.check(principal, "query_stream")
-    trace_id = str(uuid4())
     return StreamingResponse(
         _stream_query(services, request, principal, trace_id),
         media_type="text/event-stream",

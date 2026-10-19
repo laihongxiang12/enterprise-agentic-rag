@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from app.core.config import Settings
 from app.core.dependencies import PolicyEngine
 from app.llm.base import LLMProvider
+from app.observability import Observability, get_observability
 from app.retrieval.base import Retriever
 from app.schemas.agent import AgentState, new_agent_state
 from app.schemas.documents import Principal
@@ -99,6 +100,7 @@ class AgentRuntimeContext:
     policy_engine: PolicyEngine
     limits: AgentLimits = field(default_factory=AgentLimits)
     now_epoch_ms: Callable[[], int] = system_epoch_ms
+    observability: Observability = field(default_factory=get_observability)
 
 
 def build_initial_state(

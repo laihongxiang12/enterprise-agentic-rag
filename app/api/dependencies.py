@@ -82,3 +82,12 @@ def get_principal(request: Request) -> Principal:
     if not isinstance(principal, Principal):
         raise AppError(code="unauthorized", message="Authentication is required", status_code=401)
     return principal
+
+
+def get_trace_id(request: Request) -> str:
+    trace_id = getattr(request.state, "trace_id", None)
+    if not isinstance(trace_id, str) or not trace_id:
+        raise AppError(
+            code="trace_unavailable", message="Trace context is unavailable", status_code=500
+        )
+    return trace_id

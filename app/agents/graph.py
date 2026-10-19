@@ -17,6 +17,12 @@ from app.agents.nodes.rewrite import rewrite_query, select_after_rewrite
 from app.agents.nodes.route import policy_check, select_next_node
 from app.agents.nodes.verify import select_after_verify, verify_citations
 from app.agents.state import AgentRuntimeContext
+from app.observability.instrumentation import (
+    ObservedNode,
+    observed_async_node,
+    observed_runtime_node,
+    observed_state_node,
+)
 from app.schemas.agent import AgentState
 
 
@@ -29,17 +35,41 @@ def build_agent_graph(
     AgentState,
 ]:
     builder = StateGraph(AgentState, context_schema=AgentRuntimeContext)
-    builder.add_node("analyze_and_route", analyze_and_route)
-    builder.add_node("policy_check", policy_check)
-    builder.add_node("direct", direct_response)
-    builder.add_node("retrieve", retrieve)
-    builder.add_node("grade_evidence", grade_evidence)
-    builder.add_node("rewrite_query", rewrite_query)
-    builder.add_node("plan_multihop", plan_and_retrieve)
-    builder.add_node("generate_grounded", generate_grounded)
-    builder.add_node("verify_citations", verify_citations)
-    builder.add_node("insufficient_evidence", insufficient_evidence)
-    builder.add_node("policy_blocked", policy_blocked)
+    _add_observed_node(
+        builder,
+        "analyze_and_route",
+        observed_async_node("analyze_and_route", analyze_and_route),
+    )
+    _add_observed_node(builder, "policy_check", observed_runtime_node("policy_check", policy_check))
+    _add_observed_node(builder, "direct", observed_state_node("direct", direct_response))
+    _add_observed_node(builder, "retrieve", observed_async_node("retrieve", retrieve))
+    _add_observed_node(
+        builder, "grade_evidence", observed_async_node("grade_evidence", grade_evidence)
+    )
+    _add_observed_node(
+        builder, "rewrite_query", observed_async_node("rewrite_query", rewrite_query)
+    )
+    _add_observed_node(
+        builder, "plan_multihop", observed_async_node("plan_multihop", plan_and_retrieve)
+    )
+    _add_observed_node(
+        builder,
+        "generate_grounded",
+        observed_async_node("generate_grounded", generate_grounded),
+    )
+    _add_observed_node(
+        builder,
+        "verify_citations",
+        observed_async_node("verify_citations", verify_citations),
+    )
+    _add_observed_node(
+        builder,
+        "insufficient_evidence",
+        observed_state_node("insufficient_evidence", insufficient_evidence),
+    )
+    _add_observed_node(
+        builder, "policy_blocked", observed_state_node("policy_blocked", policy_blocked)
+    )
 
     builder.add_edge(START, "analyze_and_route")
     builder.add_edge("analyze_and_route", "policy_check")
@@ -102,3 +132,12 @@ def build_agent_graph(
         checkpointer=checkpointer,
         name="enterprise-agent-retrieval-loop",
     )
+
+
+def _add_observed_node(
+    builder: StateGraph[AgentState, AgentRuntimeContext, AgentState, AgentState],
+    name: str,
+    action: ObservedNode,
+) -> None:
+    # LangGraph's overloads do not accept an equivalent public Callable union.
+    builder.add_node(name, action)  # type: ignore[call-overload]
