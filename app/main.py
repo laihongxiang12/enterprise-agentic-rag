@@ -27,6 +27,14 @@ class LiveResponse(BaseModel):
     status: Literal["ok"] = "ok"
 
 
+class ReadyResponse(BaseModel):
+    """Readiness verdict without pretending that unprobed backends are healthy."""
+
+    status: Literal["ready", "not_ready"]
+    mode: str
+    dependencies: dict[str, Literal["ok", "not_configured", "not_required", "not_verified"]]
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -98,6 +106,34 @@ def create_app(
     @application.get("/health/live", response_model=LiveResponse, tags=["health"])
     async def health_live() -> LiveResponse:
         return LiveResponse()
+
+    @application.get("/health/ready", response_model=ReadyResponse, tags=["health"])
+    async def health_ready(response: Response) -> ReadyResponse:
+        services = application.state.api_services
+        services_configured = isinstance(services, ApiServices)
+        if (
+            resolved_settings.app_mode == "fake"
+            and resolved_settings.app_env == "local"
+            and services_configured
+        ):
+            return ReadyResponse(
+                status="ready",
+                mode=resolved_settings.app_mode,
+                dependencies={
+                    "api_services": "ok",
+                    "external_backends": "not_required",
+                },
+            )
+
+        response.status_code = 503
+        return ReadyResponse(
+            status="not_ready",
+            mode=resolved_settings.app_mode,
+            dependencies={
+                "api_services": "ok" if services_configured else "not_configured",
+                "external_backends": "not_verified",
+            },
+        )
 
     @application.get("/metrics", include_in_schema=False)
     async def metrics(request: Request) -> Response:

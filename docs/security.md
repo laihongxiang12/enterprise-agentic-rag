@@ -89,8 +89,9 @@ The application uses programmatic boundaries rather than relying on a model inst
 - free-form audit `details` are discarded. Stable IDs, action/type, and outcome remain in their
   dedicated columns; query text, document content, bearer tokens, prompts, and API keys are not
   persisted there;
-- no trace-export route exists before the separately authorized observability stage. `/v1/traces/*`
-  requires authentication and returns `404` even to an authenticated user.
+- no trace-export HTTP route is currently implemented. `/v1/traces/*` therefore passes the
+  authentication boundary and returns `404`; in-memory spans are for local tests/debug only.
+  A future trace endpoint must add an explicit admin scope and redaction review before release.
 
 External document text is serialized below `untrusted_evidence[*].content` in a JSON user message.
 It cannot modify citation identity fields, identity, retrieval scope, or the tool registry. The
@@ -124,3 +125,7 @@ The security suite intentionally does not call DeepSeek. These tests prove serve
 pre-filter, cache, citation, checkpoint, audit, and tool-registry invariants; a paid model response
 cannot prove those invariants and is not allowed to grant authority. Real DeepSeek configuration
 is therefore neither required nor silently skipped for this stage.
+
+Stage 21 re-ran this suite on 2026-10-20: `52 passed`; the full suite reported
+`255 passed` and the selected real PostgreSQL/Milvus/Redis integration set reported
+`5 passed` with one upstream Redis checkpoint deprecation warning.

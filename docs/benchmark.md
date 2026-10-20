@@ -86,3 +86,11 @@ real-world accuracy.
 The next honest measurement step is an explicitly approved `real` run with a
 versioned embedding model, real reranker, indexed corpus, and DeepSeek usage/cost
 captured from provider responses.
+
+## Stage 21 independent repeat
+
+The full offline profile was repeated on 2026-10-20 against the committed 25/108/20
+datasets. All retrieval/route/task/retry/citation/injection quality values matched the
+table above. The repeated D fixture measured p50 `0.291 ms` and p95 `0.521 ms`;
+tokens remained `0` and cost remained `NOT_MEASURED`. These timing values are recorded
+only as deterministic in-process regression evidence, not production performance.

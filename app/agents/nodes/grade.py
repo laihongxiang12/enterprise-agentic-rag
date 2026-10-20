@@ -6,6 +6,7 @@ from typing import Literal
 from langgraph.runtime import Runtime
 from pydantic import ValidationError
 
+from app.agents.nodes.retrieve import is_authorized_chunk
 from app.agents.state import AgentRuntimeContext, append_error
 from app.llm.base import LLMError, LLMMessage
 from app.schemas.agent import AgentState, EvidenceGrade
@@ -188,15 +189,7 @@ def _validated_authorized_chunks(
 
 
 def _authorized(chunk: RetrievedChunk, context: AgentRuntimeContext) -> bool:
-    auth_filter = context.auth_filter
-    return bool(
-        chunk.tenant_id == auth_filter.tenant_id
-        and chunk.workspace_id == auth_filter.workspace_id
-        and chunk.document_id in auth_filter.allowed_document_ids
-        and chunk.index_version in auth_filter.allowed_index_versions
-        and (chunk.document_id, chunk.document_version, chunk.index_version)
-        in auth_filter.allowed_document_versions
-    )
+    return is_authorized_chunk(chunk, context)
 
 
 def _insufficient(reason: str) -> EvidenceGrade:

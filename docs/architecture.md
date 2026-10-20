@@ -122,14 +122,15 @@ child 用于召回，parent/邻域用于生成。父文档回填必须再次检�
 4. C4 会创建/删除 collection 的脚本不进入默认测试；C7 Web 工具不在 P0 注册。
 5. 原有未提交改动始终保留；阶段性工作只落在新产品子目录及指导文档。
 
-## 7. 当前可用性与阻塞
+## 7. 当前可用性与阻塞（阶段 21 更新）
 
-- 已验证：Python 3.12、本地 GPU、本地 BGE embedding、LangChain/LlamaIndex 离线检索、Neo4j 只读连接、C8 RRF 行为。
-- 当前阻塞：Milvus 容器未运行（19530 未监听）；真实 C8/C9 生成因避免收费 API 未执行；C4 rerank/hybrid 因模型下载和破坏性集合操作未执行。
-- 阶段 01 只建立最小产品脚手架与 fake/local health path，不提前连接 Milvus、DeepSeek 或创建整套空目录。
+- 已验证：Python 3.12 应用、PostgreSQL metadata/ACL、Milvus Dense + BM25 + RRF、Redis cache/checkpoint、LangGraph 有界循环、安全负例、离线评测以及 Compose Fake Demo。2026-10-20 的独立验收结果见 [`adr/004-stage21-acceptance.md`](adr/004-stage21-acceptance.md)。
+- 已实现但非生产证明：浏览器 Demo 使用确定性的 `DemoQueryService`；它验证 HTTP、SSE、引用展示和部署契约，不运行真实 LangGraph、真实检索链或 DeepSeek。
+- 未完成：`APP_MODE=real` 的 API 组合根、生产身份提供方、生产任务队列、外部依赖 readiness probe、`/v1/evaluations` 与 `/v1/traces/{trace_id}`。
+- 未测量：真实 DeepSeek 回答质量/费用，以及包含 API、Milvus、reranker 和模型调用的生产 p50/p95。离线 fixture 指标不得替代这些结果。
 
 ## 8. Git 与发布边界
 
-当前 Git 身份为 `laihongxiang12`，但 `origin` 指向 `datawhalechina/all-in-rag`。在第一次提交或推送前，需由用户确认个人 GitHub 目标仓库，并决定保留 upstream `origin`、新增个人 remote，或调整 remote 命名。任何选择都不能丢失现有提交和未提交改动。
+个人发布仓库为 `laihongxiang12/enterprise-agentic-rag`；上游 `datawhalechina/all-in-rag` 仍作为父工作树来源保留。阶段提交只包含产品子目录，不能带入父工作树既有的未提交改动。
 
 旧仓库 README 声明 CC BY-NC-SA 4.0。产品代码凡复制或形成衍生关系的部分必须保留 provenance/attribution 并遵守许可；无法确认时只复现公开行为并独立实现。

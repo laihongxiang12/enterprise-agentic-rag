@@ -12,7 +12,12 @@ def direct_response(state: AgentState) -> AgentState:
         response={
             "action": "direct",
             "route_reason": state.get("route_reason", ""),
-            "generation": "deferred_to_stage_14",
+            "answer": (
+                "这是一个不需要访问企业知识库的通用请求。"
+                "当前服务未调用外部模型, 因此不提供未经证据支持的扩展回答。"
+            ),
+            "citations": [],
+            "finish_reason": "completed",
         }
     )
 

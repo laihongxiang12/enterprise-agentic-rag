@@ -4,6 +4,8 @@
 
 当前实现包含 FastAPI 文档/查询接口、严格契约、离线 Fake、文档 Loader、版本化 Ingestion、PostgreSQL 元数据/ACL、Milvus Dense + 原生 BM25 + RRF 混合检索、受限 Rerank、LangGraph 有界检索图、Grounded Answer 与引用验证、Redis cache/checkpoint、可观测性、离线评测以及可构建的 Compose Demo。生产身份提供方和生产任务队列仍需部署方接入，不能把 Fake Demo 解释为生产环境。
 
+阶段 21 的独立验收结论、缺口和复现证据见 [`docs/adr/004-stage21-acceptance.md`](docs/adr/004-stage21-acceptance.md)；8–10 分钟面试演示脚本见 [`docs/interview-demo.md`](docs/interview-demo.md)。
+
 ## Fake Quickstart（不调用 DeepSeek）
 
 完整 Demo 使用非 root API 镜像，并启动 PostgreSQL、Redis、Milvus、etcd 与 MinIO。先创建仅用于本机的 Compose 环境文件并替换占位值：
@@ -16,6 +18,8 @@ uv run python -m scripts.smoke
 ```
 
 浏览器打开 `http://127.0.0.1:8000/`。Fake Demo token 是 `demo-local-token`，只用于 `APP_ENV=local`、`APP_MODE=fake` 的原创虚构数据演示；它不是生产认证。页面展示答案、citations、trace_id、重试次数和完成状态。
+
+浏览器 Demo 的 query/rewrite/blocked 结果来自确定性的 `DemoQueryService`，不是 LangGraph 执行轨迹。真实 Agent 图行为由 `tests/unit/test_graph_router.py`、`test_retry_loop.py`、`test_multihop.py` 与 `test_grounding.py` 验证；演示时必须明确区分两者。
 
 停止容器但保留数据卷：
 
@@ -54,19 +58,21 @@ uv run uvicorn app.main:app --reload
 
 ```bash
 curl --fail --silent http://127.0.0.1:8000/health/live
+curl --fail --silent http://127.0.0.1:8000/health/ready
 ```
 
 预期响应：
 
 ```json
 {"status":"ok"}
+{"status":"ready","mode":"fake","dependencies":{"api_services":"ok","external_backends":"not_required"}}
 ```
 
 ## 运行模式
 
 - `APP_MODE=fake`：默认离线模式，不调用外部服务，供单测和早期演示使用。
 - `APP_MODE=local`：仅允许后续阶段显式配置的本地 adapter；不会因为存在密钥而自动调用真实 API。
-- `APP_MODE=real`：真实 provider 模式。当前至少要求 `LLM_API_KEY`，缺失时应用启动失败；后续阶段会逐项增加依赖 readiness 检查。
+- `APP_MODE=real`：真实 provider 模式。当前至少要求 `LLM_API_KEY`，缺失时应用启动失败。由于生产组合根尚未装配，`/health/ready` 会明确返回 `503 not_ready`，不会把未探测的后端报告为健康。
 
 从模板创建本地配置：
 

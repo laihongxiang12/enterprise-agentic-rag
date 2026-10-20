@@ -118,7 +118,17 @@ async def test_direct_route_finishes_without_retrieval() -> None:
 
     assert result["route"] == "direct"
     assert result["route_reason"] == "choose direct"
-    assert result["response"]["action"] == "direct"
+    assert result["response"] == {
+        "action": "direct",
+        "route_reason": "choose direct",
+        "answer": (
+            "这是一个不需要访问企业知识库的通用请求。"
+            "当前服务未调用外部模型, 因此不提供未经证据支持的扩展回答。"
+        ),
+        "citations": [],
+        "finish_reason": "completed",
+    }
+    assert "deferred" not in str(result["response"])
     assert result["remaining_agent_rounds"] == 5
     assert len(llm.calls) == 1
     assert retriever.calls == []
