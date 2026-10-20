@@ -6,6 +6,22 @@
 
 阶段 21 的独立验收结论、缺口和复现证据见 [`docs/adr/004-stage21-acceptance.md`](docs/adr/004-stage21-acceptance.md)；8–10 分钟面试演示脚本见 [`docs/interview-demo.md`](docs/interview-demo.md)。
 
+## Read-only MCP（阶段 22）
+
+MCP 2.3.0 stdio server 只公开 `search_docs(query, limit)` 与
+`get_doc(document_id)`。身份、tenant、workspace 和授权范围固定在启动进程验证后的连接上下文，
+不会出现在工具参数中；未知参数、危险工具、跨租户结果和越权文档均失败关闭。
+
+本地握手示例使用每次启动生成的临时签名密钥、虚构 Northstar 数据和内存 Hybrid/RRF
+adapter，不读取或调用 DeepSeek：
+
+```bash
+uv run python -m scripts.mcp_client
+```
+
+预期列出的工具严格为 `get_doc` 和 `search_docs`，两个调用的 `isError` 均为 `false`。
+运行模式、安全边界、host 配置和真实后端接入限制见 [`docs/mcp.md`](docs/mcp.md)。
+
 ## Fake Quickstart（不调用 DeepSeek）
 
 完整 Demo 使用非 root API 镜像，并启动 PostgreSQL、Redis、Milvus、etcd 与 MinIO。先创建仅用于本机的 Compose 环境文件并替换占位值：

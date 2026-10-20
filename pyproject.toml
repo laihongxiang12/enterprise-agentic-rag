@@ -20,6 +20,7 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "redis>=6.4,<7",
     "uvicorn[standard]>=0.34,<1",
+    "mcp==2.3.0",
 ]
 
 [project.optional-dependencies]

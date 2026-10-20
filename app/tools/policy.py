@@ -61,5 +61,8 @@ class ToolPolicy:
 
 
 DEFAULT_TOOL_POLICY = ToolPolicy(
-    (ToolRegistration(name="search_docs", required_scope="tools:search_docs"),)
+    (
+        ToolRegistration(name="get_doc", required_scope="tools:get_doc"),
+        ToolRegistration(name="search_docs", required_scope="tools:search_docs"),
+    )
 )

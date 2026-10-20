@@ -14,6 +14,7 @@ from app.agents.graph import build_agent_graph
 from app.agents.state import AgentRuntimeContext, build_initial_state
 from app.core.errors import AppError
 from app.observability.instrumentation import instrument_runtime_context
+from app.retrieval.authorization import chunk_matches_scope
 from app.retrieval.base import Retriever
 from app.schemas.agent import AgentState
 from app.schemas.api import Citation, QueryRequest, QueryResponse, Usage
@@ -136,13 +137,13 @@ class CachedRetriever:
         if cached is not None:
             try:
                 cached_chunks = _CHUNK_LIST.validate_json(cached)
-                if all(_chunk_matches_scope(chunk, auth_filter) for chunk in cached_chunks):
+                if all(chunk_matches_scope(chunk, auth_filter) for chunk in cached_chunks):
                     return cached_chunks
             except ValidationError:
                 pass
             await self._cache.invalidate(key.redis_key)
         chunks = await self._retriever.aretrieve(query, auth_filter, top_k)
-        if any(not _chunk_matches_scope(chunk, auth_filter) for chunk in chunks):
+        if any(not chunk_matches_scope(chunk, auth_filter) for chunk in chunks):
             raise AppError(
                 code="retrieval_scope_violation",
                 message="Retrieval returned evidence outside the authorization scope",
@@ -155,26 +156,6 @@ class CachedRetriever:
         ).encode()
         await self._cache.set(key.redis_key, encoded, self._ttl_seconds)
         return chunks
-
-
-def _chunk_matches_scope(chunk: RetrievedChunk, auth_filter: AuthFilter) -> bool:
-    binding = (chunk.document_id, chunk.document_version, chunk.index_version)
-    visible = chunk.visibility == "tenant" or bool(
-        set(chunk.acl_groups).intersection(auth_filter.group_ids)
-    )
-    return bool(
-        auth_filter.allowed_document_ids
-        and auth_filter.allowed_index_versions
-        and auth_filter.allowed_document_versions
-        and chunk.tenant_id == auth_filter.tenant_id
-        and chunk.workspace_id == auth_filter.workspace_id
-        and chunk.document_id in auth_filter.allowed_document_ids
-        and chunk.index_version in auth_filter.allowed_index_versions
-        and binding in auth_filter.allowed_document_versions
-        and visible
-    )
-
-
 class AgentQueryApplicationService:
     """Convert graph state into the stable public query response contract."""
 

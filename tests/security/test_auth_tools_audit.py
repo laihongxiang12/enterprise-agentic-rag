@@ -81,11 +81,12 @@ def test_signed_but_malformed_identity_claims_are_rejected(
 
 
 def test_default_registry_contains_only_read_only_document_search() -> None:
-    assert DEFAULT_TOOL_POLICY.registered_names == ("search_docs",)
+    assert DEFAULT_TOOL_POLICY.registered_names == ("get_doc", "search_docs")
     principal = Principal(
         user_id="alice",
         tenant_id="tenant-a",
         scopes=[
+            "tools:get_doc",
             "tools:search_docs",
             "tools:web",
             "tools:sql",
@@ -94,6 +95,7 @@ def test_default_registry_contains_only_read_only_document_search() -> None:
         ],
     )
     policy = BasicPolicyEngine()
+    assert policy.authorize_tool(principal, "get_doc")
     assert policy.authorize_tool(principal, "search_docs")
     for dangerous in ("web", "sql", "shell", "python", "filesystem_write"):
         assert not policy.authorize_tool(principal, dangerous)
